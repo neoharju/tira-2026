@@ -46,6 +46,8 @@ Törmäysten käsittelyyn on kaksi tavallista tapaa:
 
 * _Avoin hajautus_ (_open addressing_): Jokaisessa hajautustaulun kohdassa voi olla enintään yksi alkio. Alkion $$x$$ paikka etsitään funktiolla $$p(x,i)$$ kokeilemalla arvoja $$i=0,1,2,\dots$$ kunnes löytyy vapaa paikka.
 
+{% include viz.html id="hash-table" alt="Interaktiivinen hajautustaulu: alkioiden lisääminen sekä ketjuhajautus ja avoin hajautus törmäyksissä." %}
+
 ## Tehokkuus
 
 Hajautustaulu toimii tehokkaasti, jos alkiot sijoittuvat tasaisesti eri puolille hajautustaulua. Tähän vaikuttavat hajautustaulun koko ja hajautusfunktion valinta.

@@ -14,7 +14,7 @@ Algoritmi käy läpi listan kohdat vasemmalta oikealle. Jokaisessa listan kohdas
 
 Seuraava kuva näyttää, miten lisäysjärjestäminen järjestää listan $$[5,2,4,2,6,1]$$.
 
-![](img/lisaysjarjestaminen.png)
+{% include viz.html id="insertion-sort" alt="Lisäysjärjestäminen järjestää listan [5, 2, 4, 2, 6, 1]." fallback="img/lisaysjarjestaminen.png" %}
 
 ## Toteutus
 

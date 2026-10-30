@@ -18,7 +18,7 @@ Tehtävässä 1 sinun tulee kertoa, minkä tuloksen tietty kurssilla käsitelty 
 
 Minkä tuloksen Dijkstran algoritmi antaa seuraavalle verkolle, kun aloitussolmu on solmu 1?
 
-![](../img/lyhpol.png)
+{% include viz.html id="weighted" alt="Painotettu suunnattu verkko viidellä solmulla." fallback="img/lyhpol.png" %}
 
 **Malliratkaisu**
 
@@ -42,7 +42,7 @@ Anna esimerkki verkosta, jossa on viisi solmua ja kolme vahvasti yhtenäistä ko
 
 Tässä on halutunlainen verkko:
 
-![](../img/suuver.png)
+{% include viz.html id="digraph" mode="scc" alt="Suunnattu verkko, jossa on viisi solmua ja kolme vahvasti yhtenäistä komponenttia." fallback="img/suuver.png" %}
 
 Vahvasti yhtenäiset komponentit ovat $$\{1,2,4\}$$, $$\{3\}$$ ja $$\{5\}$$.
 

@@ -1,0 +1,557 @@
+/* Interactive figures (assets/js/viz-*.js). Colours follow the site theme. */
+
+.viz {
+  --vz-bg: var(--bg-elev);
+  --vz-grid: var(--border-soft);
+  --vz-node: #ffffff;
+  --vz-node-stroke: #b9bfcf;
+  --vz-node-text: #1b1f33;
+  --vz-edge: #b4bacb;
+  --vz-edge-text: #4a5068;
+  --vz-cur: #e0457b;
+  --vz-cur-soft: rgba(224, 69, 123, .14);
+  --vz-act: #e0457b;
+  --vz-done: #6a4cf0;
+  --vz-done-soft: rgba(106, 76, 240, .12);
+  --vz-ok: #16a34a;
+  --vz-ok-soft: rgba(22, 163, 74, .13);
+  --vz-bad: #dc2626;
+  --vz-bad-soft: rgba(220, 38, 38, .12);
+  --vz-warn: #d97706;
+  --vz-c0: #e0457b;
+  --vz-c1: #6a4cf0;
+  --vz-c2: #0891b2;
+  --vz-c3: #d97706;
+  --vz-c4: #16a34a;
+  --vz-c5: #2563eb;
+  --vz-mono: var(--font-mono);
+  /* Opaque tints for node fills, so that edges under a node never show through it. */
+  --vz-cur-fill: color-mix(in srgb, var(--vz-cur) 14%, var(--vz-node));
+  --vz-done-fill: color-mix(in srgb, var(--vz-done) 12%, var(--vz-node));
+  --vz-ok-fill: color-mix(in srgb, var(--vz-ok) 13%, var(--vz-node));
+  --vz-bad-fill: color-mix(in srgb, var(--vz-bad) 12%, var(--vz-node));
+
+  position: relative;
+  margin: 1.8rem 0 2.2rem;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--vz-bg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  container-type: inline-size;
+  container-name: viz;
+}
+html.dark .viz {
+  --vz-cur-fill: color-mix(in srgb, var(--vz-cur) 18%, var(--vz-node));
+  --vz-done-fill: color-mix(in srgb, var(--vz-done) 16%, var(--vz-node));
+  --vz-ok-fill: color-mix(in srgb, var(--vz-ok) 15%, var(--vz-node));
+  --vz-bad-fill: color-mix(in srgb, var(--vz-bad) 15%, var(--vz-node));
+  --vz-node: #171a26;
+  --vz-node-stroke: #4a5170;
+  --vz-node-text: #e9ebf4;
+  --vz-edge: #475070;
+  --vz-edge-text: #b5bbd0;
+  --vz-cur: #ff5c95;
+  --vz-cur-soft: rgba(255, 92, 149, .18);
+  --vz-act: #ff6a9d;
+  --vz-done: #9c8bff;
+  --vz-done-soft: rgba(156, 139, 255, .16);
+  --vz-ok: #34d399;
+  --vz-ok-soft: rgba(52, 211, 153, .15);
+  --vz-bad: #f87171;
+  --vz-bad-soft: rgba(248, 113, 113, .15);
+  --vz-warn: #fbbf24;
+  --vz-c0: #ff6a9d;
+  --vz-c1: #9c8bff;
+  --vz-c2: #22d3ee;
+  --vz-c3: #fbbf24;
+  --vz-c4: #34d399;
+  --vz-c5: #60a5fa;
+}
+.viz::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: var(--grad);
+  opacity: .85;
+}
+.viz-placeholder { min-height: 380px; }
+.viz-side:empty { display: none; }
+.viz.is-ready .viz-placeholder { display: none; }
+.viz noscript img { display: block; margin: 1rem auto; }
+
+.viz-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem .9rem;
+  padding: .85rem 1rem .2rem 1.1rem;
+}
+.viz-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .16rem .55rem;
+  border-radius: 999px;
+  background: var(--violet-soft);
+  color: var(--violet-ink);
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.viz-kicker .icon { width: 12px; height: 12px; }
+.viz-title { font-weight: 650; font-size: .92rem; color: var(--fg); letter-spacing: -.005em; }
+
+.viz-tabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-left: auto;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--bg-soft);
+}
+.viz-tab {
+  padding: .26rem .65rem;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fg-mute);
+  font-size: .78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .2s, color .2s, box-shadow .2s;
+}
+.viz-tab:hover { color: var(--fg); }
+.viz-tab[aria-selected="true"] { background: var(--bg-elev); color: var(--fg); box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--border); }
+
+.viz-main { display: grid; gap: .75rem; padding: .6rem 1rem 0; }
+/* Split figures: the stage gets the full width and the panels go below it, the code
+   panel on the left. Stage and panels sit side by side only in very wide figures. */
+@container viz (min-width: 560px) {
+  .viz-main.is-split .viz-side { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); align-items: start; }
+  .viz-main.is-split .viz-side > .viz-panel:has(.viz-code) { grid-row: span 4; }
+  .viz-main.is-split .viz-side > :only-child,
+  .viz-main.is-split .viz-side > .viz-panel.is-wide { grid-column: 1 / -1; grid-row: auto; }
+}
+@container viz (min-width: 1000px) {
+  .viz-main.is-split { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); align-items: start; }
+  .viz-main.is-split .viz-side { grid-template-columns: minmax(0, 1fr); }
+  .viz-main.is-split .viz-side > .viz-panel:has(.viz-code) { grid-row: auto; }
+  .viz-main.is-split .viz-side > .viz-panel.is-wide { grid-column: auto; }
+}
+.viz-stage {
+  position: relative;
+  min-width: 0;
+  border-radius: 12px;
+  background-color: var(--bg-soft);
+  background-image: radial-gradient(var(--vz-grid) 1.1px, transparent 1.1px);
+  background-size: 18px 18px;
+  border: 1px solid var(--border-soft);
+}
+html.dark .viz-stage { background-color: #0e1018; }
+.viz-stage + .viz-stage { margin-top: 0; }
+.vz-svg { display: block; width: 100%; margin-inline: auto; height: auto; max-height: 440px; overflow: visible; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+.viz-side { display: grid; gap: .6rem; min-width: 0; align-content: start; }
+
+.viz-caption {
+  min-height: 3.1em;
+  margin: 0;
+  padding: .75rem 1.1rem .2rem;
+  color: var(--fg-soft);
+  font-size: .9rem;
+  line-height: 1.55;
+}
+.viz-caption code {
+  padding: .1em .35em;
+  border-radius: 5px;
+  background: var(--inline-code-bg);
+  font-family: var(--vz-mono);
+  font-size: .86em;
+}
+.viz-caption strong { color: var(--fg); font-weight: 650; }
+
+/* Player controls */
+.viz-bar {
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .55rem .8rem .8rem 1rem;
+}
+.viz-btn {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elev);
+  color: var(--fg-soft);
+  cursor: pointer;
+  transition: background .2s, color .2s, border-color .2s, transform .12s;
+}
+.viz-btn:hover { color: var(--fg); border-color: var(--border-strong); background: var(--bg-soft); }
+.viz-btn:active { transform: scale(.93); }
+.viz-btn:disabled { opacity: .4; cursor: default; transform: none; }
+.viz-btn .icon { width: 16px; height: 16px; }
+.viz-btn.is-play {
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--grad-btn);
+  color: #fff;
+  box-shadow: 0 8px 20px -8px rgba(154, 63, 216, .7);
+}
+.viz-btn.is-play:hover { color: #fff; background: var(--grad-btn); filter: brightness(1.08); }
+.viz-btn.is-play .icon { width: 18px; height: 18px; }
+.viz-btn.is-text { width: auto; padding: 0 .7rem; font-size: .78rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+
+.viz-range {
+  flex: 1;
+  min-width: 60px;
+  height: 22px;
+  margin: 0 .35rem;
+  background: transparent;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  --p: 0%;
+}
+.viz-range::-webkit-slider-runnable-track {
+  height: 5px;
+  border-radius: 5px;
+  background: linear-gradient(90deg, var(--vz-cur) 0 var(--p), var(--bg-mute) var(--p) 100%);
+}
+.viz-range::-moz-range-track { height: 5px; border-radius: 5px; background: var(--bg-mute); }
+.viz-range::-moz-range-progress { height: 5px; border-radius: 5px; background: var(--vz-cur); }
+.viz-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 15px;
+  height: 15px;
+  margin-top: -5px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--vz-cur);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .3);
+}
+.viz-range::-moz-range-thumb { width: 12px; height: 12px; border: 2px solid #fff; border-radius: 50%; background: var(--vz-cur); }
+.viz-count { min-width: 3.6em; color: var(--fg-mute); font-size: .76rem; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+
+/* Action toolbar (interactive widgets) */
+.viz-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .45rem;
+  padding: .65rem 1rem 0;
+}
+.viz-tools .viz-btn.is-text { height: 32px; }
+.viz-input {
+  width: 4.6rem;
+  height: 32px;
+  padding: 0 .55rem;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-elev);
+  color: var(--fg);
+  font: 600 .85rem var(--vz-mono);
+}
+.viz-input:focus { outline: 2px solid var(--focus); outline-offset: 1px; }
+.viz-tools .viz-label { color: var(--fg-mute); font-size: .8rem; font-weight: 600; }
+.viz-tools .viz-sep { width: 1px; height: 22px; background: var(--border); margin: 0 .2rem; }
+.viz-btn.is-primary { border-color: transparent; background: var(--grad-btn); color: #fff; }
+.viz-btn.is-primary:hover { color: #fff; filter: brightness(1.08); background: var(--grad-btn); }
+
+/* Panels */
+.viz-panel {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--bg-elev);
+  overflow: hidden;
+}
+.viz-panel-head {
+  display: flex;
+  justify-content: space-between;
+  padding: .38rem .7rem;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--bg-soft);
+  color: var(--fg-mute);
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.viz-code {
+  margin: 0;
+  padding: .45rem 0;
+  overflow-x: auto;
+  font: .74rem/1.62 var(--vz-mono);
+  color: var(--tk-fg);
+  counter-reset: ln;
+}
+.viz-code .ln { display: block; padding: 0 .75rem 0 2.6rem; position: relative; white-space: pre; transition: background .25s; }
+.viz-code .ln::before {
+  counter-increment: ln;
+  content: counter(ln);
+  position: absolute;
+  left: 0;
+  width: 1.9rem;
+  text-align: right;
+  color: var(--fg-faint);
+  font-size: .7rem;
+}
+.viz-code .ln.is-hl { background: var(--vz-cur-soft); box-shadow: inset 3px 0 0 var(--vz-cur); }
+.viz-code .ln.is-hl::before { color: var(--vz-cur); font-weight: 700; }
+.viz-code .t-k { color: var(--tk-keyword); }
+.viz-code .t-b { color: var(--tk-builtin); }
+.viz-code .t-n { color: var(--tk-number); }
+.viz-code .t-s { color: var(--tk-string); }
+.viz-code .t-c { color: var(--tk-comment); font-style: italic; }
+.viz-code .t-f { color: var(--tk-func); }
+
+.viz-out {
+  max-height: 11.5rem;
+  margin: 0;
+  padding: .5rem .75rem;
+  overflow-y: auto;
+  background: var(--term-bg);
+  color: var(--term-fg);
+  font: .76rem/1.6 var(--vz-mono);
+  scrollbar-width: thin;
+}
+.viz-panel.is-term { border-color: var(--term-border); }
+.viz-panel.is-term .viz-panel-head { background: var(--term-head); border-bottom-color: var(--term-border); color: #8f97b3; }
+.viz-out .o-line { display: block; white-space: pre; opacity: .78; }
+.viz-out .o-line.is-new { opacity: 1; color: #fff; animation: vz-flash .9s ease; }
+.viz-out .o-empty { color: #6f758c; font-style: italic; }
+@keyframes vz-flash { from { background: rgba(255, 92, 149, .28); } to { background: transparent; } }
+
+.viz-vars { display: flex; flex-wrap: wrap; gap: .4rem; padding: .55rem .65rem; }
+.viz-var {
+  display: inline-flex;
+  align-items: baseline;
+  gap: .4rem;
+  max-width: 100%;
+  padding: .25rem .55rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-soft);
+  font: .76rem/1.4 var(--vz-mono);
+  overflow-wrap: anywhere;
+}
+.viz-var b { flex: none; color: var(--fg-mute); font-weight: 600; font-family: var(--font-sans); font-size: .72rem; white-space: nowrap; }
+.viz-var span { color: var(--fg); font-weight: 600; }
+.viz-var.is-hl { border-color: var(--vz-cur); background: var(--vz-cur-soft); }
+.viz-var.is-ok { border-color: var(--vz-ok); background: var(--vz-ok-soft); }
+
+/* ---------- SVG scene ---------- */
+.vz-node { cursor: default; }
+.vz-node.is-clickable { cursor: pointer; }
+.vz-node .vz-shape {
+  fill: var(--vz-node);
+  stroke: var(--vz-node-stroke);
+  stroke-width: 1.6;
+  transition: fill .35s, stroke .35s, stroke-width .35s, opacity .35s;
+}
+.vz-node .vz-label {
+  fill: var(--vz-node-text);
+  font: 650 14px var(--font-sans);
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+  transition: fill .35s;
+}
+.vz-node.is-mono .vz-label { font-family: var(--vz-mono); font-size: 13px; font-weight: 600; }
+.vz-node.is-small .vz-label { font-size: 11px; }
+.vz-node.is-italic .vz-label { font-style: italic; font-family: "Times New Roman", serif; font-size: 16px; font-weight: 500; }
+.vz-sub {
+  fill: var(--fg-mute);
+  font: 600 11px var(--vz-mono);
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+  transition: fill .35s;
+}
+.vz-sub.is-hl { fill: var(--vz-cur); }
+.vz-badge circle { fill: var(--vz-done); stroke: var(--vz-bg); stroke-width: 2; transition: fill .3s; }
+.vz-badge text { fill: #fff; font: 700 10px var(--vz-mono); text-anchor: middle; dominant-baseline: central; }
+.vz-badge.is-cur circle { fill: var(--vz-cur); }
+.vz-badge.is-ok circle { fill: var(--vz-ok); }
+
+/* node states */
+.vz-node.cur .vz-shape { fill: var(--vz-cur); stroke: var(--vz-cur); stroke-width: 2.4; filter: drop-shadow(0 0 7px var(--vz-cur-soft)); }
+.vz-node.cur .vz-label { fill: #fff; }
+.vz-node.act .vz-shape { fill: var(--vz-cur-fill); stroke: var(--vz-act); stroke-width: 2.4; }
+.vz-node.done .vz-shape { fill: var(--vz-done-fill); stroke: var(--vz-done); stroke-width: 2.2; }
+.vz-node.solid .vz-shape { fill: var(--vz-done); stroke: var(--vz-done); }
+.vz-node.solid .vz-label { fill: #fff; }
+.vz-node.ok .vz-shape { fill: var(--vz-ok-fill); stroke: var(--vz-ok); stroke-width: 2.4; }
+.vz-node.okf .vz-shape { fill: var(--vz-ok); stroke: var(--vz-ok); }
+.vz-node.okf .vz-label { fill: #fff; }
+.vz-node.bad .vz-shape { fill: var(--vz-bad-fill); stroke: var(--vz-bad); stroke-width: 2.4; }
+.vz-node.hl .vz-shape { stroke: var(--vz-done); stroke-width: 3; }
+.vz-node.ring .vz-shape { stroke-width: 3.2; stroke: var(--vz-done); }
+.vz-node.prune .vz-shape { fill: var(--vz-bad); stroke: none; opacity: .75; }
+.vz-node.prune.is-cur .vz-shape { opacity: 1; filter: drop-shadow(0 0 4px var(--vz-bad)); }
+.vz-node.dim { opacity: .35; }
+.vz-node.ghost .vz-shape { fill: transparent; stroke-dasharray: 4 3; }
+.vz-node.ghost .vz-label { fill: var(--fg-faint); }
+.vz-node.plain .vz-shape { fill: transparent; stroke: transparent; }
+.vz-node.wall .vz-shape { fill: #232736; stroke: #232736; }
+html.dark .vz-node.wall .vz-shape { fill: #2c3146; stroke: #2c3146; }
+.vz-node.floor .vz-shape { fill: var(--vz-node); stroke: var(--border); stroke-width: 1; }
+.vz-node.tri .vz-shape { fill: var(--bg-soft); }
+.vz-node.c0 .vz-shape { fill: color-mix(in srgb, var(--vz-c0) 18%, var(--vz-node)); stroke: var(--vz-c0); stroke-width: 2.4; }
+.vz-node.c1 .vz-shape { fill: color-mix(in srgb, var(--vz-c1) 18%, var(--vz-node)); stroke: var(--vz-c1); stroke-width: 2.4; }
+.vz-node.c2 .vz-shape { fill: color-mix(in srgb, var(--vz-c2) 18%, var(--vz-node)); stroke: var(--vz-c2); stroke-width: 2.4; }
+.vz-node.c3 .vz-shape { fill: color-mix(in srgb, var(--vz-c3) 18%, var(--vz-node)); stroke: var(--vz-c3); stroke-width: 2.4; }
+.vz-node.c4 .vz-shape { fill: color-mix(in srgb, var(--vz-c4) 18%, var(--vz-node)); stroke: var(--vz-c4); stroke-width: 2.4; }
+.vz-node.c5 .vz-shape { fill: color-mix(in srgb, var(--vz-c5) 18%, var(--vz-node)); stroke: var(--vz-c5); stroke-width: 2.4; }
+.vz-enter { animation: vz-in .4s cubic-bezier(.2, .8, .2, 1) both; }
+.vz-exit { animation: vz-out .3s ease both; pointer-events: none; }
+@keyframes vz-in { from { opacity: 0; } }
+@keyframes vz-out { to { opacity: 0; } }
+.vz-pop .vz-shape { animation: vz-pop .45s cubic-bezier(.2, .8, .2, 1); transform-box: fill-box; transform-origin: center; }
+@keyframes vz-pop { 40% { transform: scale(1.18); } }
+
+/* edges */
+.vz-edge .vz-line { fill: none; stroke: var(--vz-edge); stroke-width: 1.8; stroke-linecap: round; transition: stroke .35s, stroke-width .35s, opacity .35s; }
+.vz-edge .vz-head { fill: var(--vz-edge); transition: fill .35s; }
+.vz-edge.act .vz-line { stroke: var(--vz-cur); stroke-width: 3; }
+.vz-edge.act .vz-head { fill: var(--vz-cur); }
+.vz-edge.done .vz-line, .vz-edge.tree .vz-line { stroke: var(--vz-done); stroke-width: 2.8; }
+.vz-edge.done .vz-head, .vz-edge.tree .vz-head { fill: var(--vz-done); }
+.vz-edge.path .vz-line { stroke: var(--vz-cur); stroke-width: 4; filter: drop-shadow(0 0 4px var(--vz-cur-soft)); }
+.vz-edge.path .vz-head { fill: var(--vz-cur); }
+.vz-edge.ok .vz-line { stroke: var(--vz-ok); stroke-width: 3; }
+.vz-edge.ok .vz-head { fill: var(--vz-ok); }
+.vz-edge.bad .vz-line { stroke: var(--vz-bad); stroke-width: 2.4; stroke-dasharray: 6 4; }
+.vz-edge.bad .vz-head { fill: var(--vz-bad); }
+.vz-edge.dim { opacity: .25; }
+.vz-edge.ghost .vz-line { stroke-dasharray: 4 4; opacity: .55; }
+.vz-edge.ghost .vz-head { opacity: .55; }
+.vz-edge.hide { opacity: 0; }
+.vz-edge.c0 .vz-line { stroke: var(--vz-c0); stroke-width: 2.6; } .vz-edge.c0 .vz-head { fill: var(--vz-c0); }
+.vz-edge.c1 .vz-line { stroke: var(--vz-c1); stroke-width: 2.6; } .vz-edge.c1 .vz-head { fill: var(--vz-c1); }
+.vz-edge.c2 .vz-line { stroke: var(--vz-c2); stroke-width: 2.6; } .vz-edge.c2 .vz-head { fill: var(--vz-c2); }
+.vz-edge.c3 .vz-line { stroke: var(--vz-c3); stroke-width: 2.6; } .vz-edge.c3 .vz-head { fill: var(--vz-c3); }
+.vz-elabel rect { fill: var(--vz-bg); stroke: var(--border); stroke-width: 1; transition: fill .3s, stroke .3s; }
+.vz-elabel text { fill: var(--vz-edge-text); font: 650 11.5px var(--vz-mono); text-anchor: middle; dominant-baseline: central; transition: fill .3s; }
+.vz-edge.act .vz-elabel rect, .vz-edge.path .vz-elabel rect { stroke: var(--vz-cur); fill: var(--vz-cur-fill); }
+.vz-edge.act .vz-elabel text, .vz-edge.path .vz-elabel text { fill: var(--vz-cur); }
+.vz-edge.done .vz-elabel rect { stroke: var(--vz-done); }
+.vz-edge.done .vz-elabel text { fill: var(--vz-done); }
+.vz-elabel.is-bare rect { display: none; }
+.vz-elabel.is-bump { animation: vz-bump .5s ease; }
+@keyframes vz-bump { 30% { transform: scale(1.25); } }
+.vz-elabel { transform-box: fill-box; transform-origin: center; }
+
+/* marks */
+.vz-hull { fill: var(--vz-done-soft); stroke: var(--vz-done); stroke-width: 1.6; stroke-dasharray: 6 5; transition: fill .35s, stroke .35s, opacity .35s; }
+.vz-hull.c0 { fill: color-mix(in srgb, var(--vz-c0) 9%, transparent); stroke: var(--vz-c0); }
+.vz-hull.c1 { fill: color-mix(in srgb, var(--vz-c1) 9%, transparent); stroke: var(--vz-c1); }
+.vz-hull.c2 { fill: color-mix(in srgb, var(--vz-c2) 9%, transparent); stroke: var(--vz-c2); }
+.vz-hull.c3 { fill: color-mix(in srgb, var(--vz-c3) 9%, transparent); stroke: var(--vz-c3); }
+.vz-hull.soft { stroke: none; }
+.vz-hull.cut { fill: color-mix(in srgb, var(--vz-cur) 7%, transparent); stroke: var(--vz-cur); }
+.vz-text { fill: var(--fg-mute); font: 600 12px var(--font-sans); dominant-baseline: central; transition: fill .3s, opacity .3s; }
+.vz-text.mono { font-family: var(--vz-mono); }
+.vz-text.big { font-size: 15px; fill: var(--fg); }
+.vz-text.cur { fill: var(--vz-cur); }
+.vz-text.done { fill: var(--vz-done); }
+.vz-text.ok { fill: var(--vz-ok); }
+.vz-text.bad { fill: var(--vz-bad); }
+.vz-text.faint { fill: var(--fg-faint); }
+.vz-text.label-x { font-style: italic; font-family: "Times New Roman", serif; font-size: 15px; fill: var(--vz-cur); font-weight: 600; }
+.vz-rect { fill: var(--vz-node); stroke: var(--vz-node-stroke); stroke-width: 1.4; transition: fill .3s, stroke .3s; }
+.vz-rect.cur { fill: var(--vz-cur-soft); stroke: var(--vz-cur); stroke-width: 2.2; }
+.vz-rect.done { fill: var(--vz-done-soft); stroke: var(--vz-done); }
+.vz-rect.ok { fill: var(--vz-ok-soft); stroke: var(--vz-ok); }
+.vz-rect.bad { fill: var(--vz-bad-soft); stroke: var(--vz-bad); }
+.vz-rect.soft { fill: var(--bg-soft); stroke: var(--border); }
+.vz-rect.none { fill: transparent; stroke: transparent; }
+.vz-rect.zone { fill: var(--vz-cur-soft); stroke: none; }
+.vz-line-mark { stroke: var(--vz-edge); stroke-width: 1.6; fill: none; transition: stroke .3s, opacity .3s; }
+.vz-line-mark.cur { stroke: var(--vz-cur); stroke-width: 2.4; }
+.vz-line-mark.done { stroke: var(--vz-done); stroke-width: 2.4; }
+.vz-line-mark.dash { stroke-dasharray: 5 4; }
+.vz-line-mark.bad { stroke: var(--vz-bad); stroke-width: 2.6; }
+.vz-dot { fill: var(--vz-cur); }
+.vz-cross { stroke: var(--vz-bad); stroke-width: 3.2; stroke-linecap: round; }
+
+/* chart (complexity) */
+.vz-axis { stroke: var(--border-strong); stroke-width: 1; }
+.vz-gridline { stroke: var(--border-soft); stroke-width: 1; }
+.vz-tick { fill: var(--fg-faint); font: 500 10.5px var(--vz-mono); }
+.vz-curve { fill: none; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; transition: opacity .25s, stroke-width .25s; }
+.vz-curve.is-faded { opacity: .18; }
+.vz-legend { display: flex; flex-wrap: wrap; gap: .35rem; padding: .2rem 1rem 0; }
+.vz-legend button {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .22rem .6rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-elev);
+  color: var(--fg-soft);
+  font: 600 .76rem var(--vz-mono);
+  cursor: pointer;
+}
+.vz-legend button[aria-pressed="false"] { opacity: .45; }
+.vz-legend i { width: 10px; height: 10px; border-radius: 50%; }
+
+/* chess board */
+.vz-cell-light { fill: var(--bg-elev); }
+.vz-cell-dark { fill: var(--bg-mute); }
+.vz-cell-attack { fill: var(--vz-bad-soft); }
+.vz-cell-hit { fill: color-mix(in srgb, var(--vz-bad) 30%, transparent); }
+.vz-queen { fill: var(--vz-done); font: 600 22px var(--font-sans); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.vz-queen.bad { fill: var(--vz-bad); }
+.vz-board-frame { fill: none; stroke: var(--border-strong); stroke-width: 1.2; }
+.vz-board-hit { cursor: pointer; fill: transparent; }
+.vz-board-hit:hover { fill: var(--vz-cur-soft); }
+
+@media (prefers-reduced-motion: reduce) {
+  .vz-enter, .vz-exit, .vz-pop .vz-shape, .vz-elabel.is-bump { animation: none !important; }
+}
+@media print {
+  .viz-bar, .viz-tools, .viz-tabs { display: none !important; }
+  .viz { box-shadow: none; break-inside: avoid; }
+}
+
+/* matrices and edge lists inside panels */
+.vz-matrix { width: 100%; border-collapse: collapse; font: .78rem/1.3 var(--vz-mono); font-variant-numeric: tabular-nums; }
+.vz-matrix th, .vz-matrix td { padding: .38rem .3rem; border: 0; border-bottom: 1px solid var(--border-soft); text-align: center; background: none; }
+.vz-matrix th { color: var(--fg-faint); font-weight: 600; font-size: .7rem; }
+.vz-matrix:not(.vz-edgelist) { font-size: .9rem; }
+.vz-matrix:not(.vz-edgelist) th { font-size: .78rem; }
+.vz-matrix td { color: var(--fg); font-weight: 600; transition: background .3s, color .3s; }
+.vz-matrix td.is-k { background: var(--vz-done-soft); }
+.vz-matrix td.is-hl { background: var(--vz-cur); color: #fff; border-radius: 6px; animation: vz-flash .9s ease; }
+.vz-edgelist td, .vz-edgelist th { text-align: left; padding-left: .7rem; }
+.vz-edgelist tr.is-hl td { background: var(--vz-cur-soft); }
+.vz-edgelist td.is-ok { color: var(--vz-ok); }
+.vz-edgelist td.is-no { color: var(--vz-bad); }
+.vz-edgelist tr.is-total td { border-bottom: 0; color: var(--fg-mute); font-weight: 700; }
+
+/* Narrow figures (phones): diagrams are scaled down to fit, so their text is set
+   larger to stay readable. Edge labels keep their size because their boxes are
+   measured for it. */
+@container viz (max-width: 520px) {
+  .viz-main { padding: .5rem .55rem 0; }
+  .vz-node .vz-label { font-size: 17px; }
+  .vz-node.is-mono .vz-label { font-size: 16px; }
+  .vz-node.is-small .vz-label { font-size: 13px; }
+  .vz-node.is-italic .vz-label { font-size: 19px; }
+  .vz-sub, .vz-tick { font-size: 14px; }
+  .vz-text { font-size: 15px; }
+  .vz-text.big, .vz-text.label-x { font-size: 18px; }
+}

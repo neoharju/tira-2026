@@ -32,4 +32,6 @@ Linkitetyn listan etuna on, että alkioita voi lisätä ja poistaa joustavasti, 
 
 Tämä vastaa listaa $$[4,1,2,3]$$, jonka aloituskohta muistissa on 109.
 
+{% include viz.html id="linked-list" alt="Animaatio alkion lisäämisestä linkitetyn listan alkuun: muisti ja listan rakenne." %}
+
 Linkitetyn listan heikkoutena on, että ei ole tehokasta tapaa laskea, missä kohdassa muistia mikäkin alkio sijaitsee. Jos halutaan päästä käsiksi tietyssä kohdassa olevaan alkioon, täytyy seurata viittauksia listan alusta tai lopusta. Tämän vuoksi indeksointi vie aikaa $$O(n)$$, jos alkio sijaitsee listan keskellä.

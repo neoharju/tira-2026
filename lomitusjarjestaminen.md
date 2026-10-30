@@ -16,7 +16,7 @@ Algoritmi hyödyntää rekursiota niin, että se järjestää listan vasemman ja
 
 Seuraava kuva näyttää, miten lomitusjärjestäminen järjestää listan $$[5,1,2,9,7,5,4,2]$$.
 
-![](img/lomitusjarjestaminen.png)
+{% include viz.html id="merge-sort" alt="Lomitusjärjestäminen järjestää listan [5, 1, 2, 9, 7, 5, 4, 2]." fallback="img/lomitusjarjestaminen.png" %}
 
 ## Toteutus
 

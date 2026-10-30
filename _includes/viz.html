@@ -1,0 +1,13 @@
+{%- comment -%}
+Interactive figure. Usage in Markdown (on its own line):
+  {% include viz.html id="bst" mode="search" alt="Kuvaus" fallback="img/bhp_2.png" %}
+`id` selects the visualization in assets/js/viz.js, `mode` and `params` are
+passed to it, `alt` describes the figure for screen readers and `fallback`
+is shown when JavaScript is not available.
+{%- endcomment -%}
+<figure class="viz" data-viz="{{ include.id }}"{% if include.mode %} data-mode="{{ include.mode }}"{% endif %}{% if include.params %} data-params="{{ include.params | escape }}"{% endif %} role="group" aria-label="{{ include.alt | escape }}">
+<div class="viz-placeholder" aria-hidden="true"></div>
+{%- if include.fallback %}
+<noscript><img src="{{ include.fallback | prepend: '/' | relative_url }}" alt="{{ include.alt | escape }}"></noscript>
+{%- endif %}
+</figure>

@@ -1,5 +1,7 @@
 {%- assign has_math = false -%}
 {%- if content contains '\(' or content contains '\[' -%}{%- assign has_math = true -%}{%- endif -%}
+{%- assign has_viz = false -%}
+{%- if content contains 'data-viz=' -%}{%- assign has_viz = true -%}{%- endif -%}
 {%- assign v = site.time | date: '%s' -%}
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -27,4 +29,11 @@
 {%- if has_math %}
 <script defer src="{{ '/assets/katex/katex.min.js' | relative_url }}"></script>
 <script defer src="{{ '/assets/katex/contrib/auto-render.min.js' | relative_url }}"></script>
+{%- endif %}
+{%- if has_viz %}
+<link rel="stylesheet" href="{{ '/assets/css/viz.css' | relative_url }}?v={{ v }}">
+<script defer src="{{ '/assets/js/viz-core.js' | relative_url }}?v={{ v }}"></script>
+<script defer src="{{ '/assets/js/viz-graphs.js' | relative_url }}?v={{ v }}"></script>
+<script defer src="{{ '/assets/js/viz-trees.js' | relative_url }}?v={{ v }}"></script>
+<script defer src="{{ '/assets/js/viz-arrays.js' | relative_url }}?v={{ v }}"></script>
 {%- endif %}
