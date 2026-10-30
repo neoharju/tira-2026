@@ -50,4 +50,7 @@ exclude:
   - Gemfile.lock
   - node_modules
   - vendor
+  - Dockerfile
+  - docker-compose.yml
+  - README.md
   - CORRECTIONS.md

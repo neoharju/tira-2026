@@ -1,0 +1,14 @@
+# Local preview: `docker compose up`, then open http://localhost:4000/kevat-2026/
+# Edits to the Markdown, layouts and assets are rebuilt automatically and the
+# browser reloads itself.
+services:
+  site:
+    build: .
+    ports:
+      - "127.0.0.1:4000:4000"   # the site
+      - "127.0.0.1:35729:35729" # LiveReload
+    volumes:
+      - .:/site
+    # On Windows (and other setups where file change events do not reach the
+    # container) uncomment the next line to make Jekyll poll for changes.
+    # command: ["bundle", "exec", "jekyll", "serve", "--host", "0.0.0.0", "--port", "4000", "--livereload", "--destination", "/tmp/_site", "--force_polling"]

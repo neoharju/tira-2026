@@ -1,0 +1,76 @@
+# Builds the site with the same gems as GitHub Pages (github-pages, see
+# Gemfile.lock) on every push and pull request, so a change that breaks the
+# build is caught before it is published.
+#
+# Publishing: the site can keep using the classic "Deploy from a branch" Pages
+# build, which needs nothing from this file. To publish from this workflow
+# instead, set Settings → Pages → Source to "GitHub Actions" and add the
+# repository variable DEPLOY_WITH_ACTIONS = true
+# (Settings → Secrets and variables → Actions → Variables).
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  DEPLOY: ${{ vars.DEPLOY_WITH_ACTIONS == 'true' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      # Jekyll reads the Markdown as UTF-8 only with a UTF-8 locale.
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+      JEKYLL_ENV: production
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+
+      - name: Build
+        run: bundle exec jekyll build --strict_front_matter
+
+      - name: Check the output
+        run: |
+          test -s _site/index.html
+          test -s _site/404.html
+          ruby -rjson -e 'n = JSON.parse(File.read("_site/search.json")).size; abort("empty search index") if n < 30; puts "search index: #{n} pages"'
+          if grep -rl --include='*.html' -e '{%' -e '{{' _site; then echo "unrendered Liquid in the files above"; exit 1; fi
+
+      - if: env.DEPLOY == 'true'
+        uses: actions/configure-pages@v6
+
+      - if: env.DEPLOY == 'true'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    if: vars.DEPLOY_WITH_ACTIONS == 'true' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
