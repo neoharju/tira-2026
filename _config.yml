@@ -35,12 +35,44 @@ collections:
     permalink: /:title/
     nav_title: Osa II
     nav_subtitle: Viikot 9–16
+  # Parts III–V are written in English (lang: en below). A part appears in the
+  # navigation and on the front page once its folder (_material_3 …) has chapters.
+  material_3:
+    output: true
+    permalink: /:title/
+    nav_title: Part III
+    nav_subtitle: Weeks 17–24
+  material_4:
+    output: true
+    permalink: /:title/
+    nav_title: Part IV
+    nav_subtitle: Weeks 25–32
+  material_5:
+    output: true
+    permalink: /:title/
+    nav_title: Part V
+    nav_subtitle: Weeks 33–40
 
 defaults:
   - scope:
       path: ""
     values:
       layout: "default"
+  - scope:
+      path: ""
+      type: material_3
+    values:
+      lang: en
+  - scope:
+      path: ""
+      type: material_4
+    values:
+      lang: en
+  - scope:
+      path: ""
+      type: material_5
+    values:
+      lang: en
 
 # Files that are part of the repository but not of the website. In Jekyll 3
 # this list replaces the default one, so the defaults are repeated here.

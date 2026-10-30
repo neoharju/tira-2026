@@ -1,9 +1,9 @@
 <header class="topbar" id="topbar">
   <div class="topbar-inner">
-    <button class="icon-btn nav-toggle" type="button" aria-controls="sidebar" aria-expanded="false" aria-label="Avaa valikko" data-nav-toggle>
+    <button class="icon-btn nav-toggle" type="button" aria-controls="sidebar" aria-expanded="false" aria-label="{{ ui.menu_open }}" data-nav-toggle>
       <svg class="icon"><use href="#i-menu"/></svg>
     </button>
-    <a class="brand" href="{{ '/' | relative_url }}" aria-label="{{ site.title }}, etusivu">
+    <a class="brand" href="{{ '/' | relative_url }}" aria-label="{{ site.title }}, {{ ui.home_aria }}">
       <span class="brand-mark" aria-hidden="true">
         <svg viewBox="0 0 32 32"><rect width="32" height="32" rx="9" fill="url(#g-brand)"/><g fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M16 9.5l-5.5 8M16 9.5l5.5 8M10.5 17.5l-2.5 5"/></g><g fill="#fff"><circle cx="16" cy="9" r="2.6"/><circle cx="10.5" cy="17.5" r="2.6"/><circle cx="21.5" cy="17.5" r="2.6"/><circle cx="8" cy="23.5" r="2.3"/></g></svg>
       </span>
@@ -14,20 +14,20 @@
     </a>
     <span class="topbar-page" aria-hidden="true">{{ page.title }}</span>
     <div class="topbar-actions">
-      <button class="search-btn" type="button" data-open-search aria-label="Hae materiaalista (Ctrl+K)">
+      <button class="search-btn" type="button" data-open-search aria-label="{{ ui.search_button_aria }}">
         <svg class="icon"><use href="#i-search"/></svg>
-        <span class="search-btn-label">Hae materiaalista</span>
+        <span class="search-btn-label">{{ ui.search_button }}</span>
         <kbd class="search-btn-kbd" data-kbd-mod>Ctrl K</kbd>
       </button>
-      <button class="icon-btn" type="button" data-zen-toggle aria-pressed="false" title="Zen-tila (Z)" aria-label="Zen-tila">
+      <button class="icon-btn" type="button" data-zen-toggle aria-pressed="false" title="{{ ui.zen_title }}" aria-label="{{ ui.zen }}">
         <svg class="icon"><use href="#i-zen"/></svg>
       </button>
-      <button class="icon-btn" type="button" data-theme-toggle title="Vaihda teemaa" aria-label="Vaihda vaalean ja tumman teeman välillä">
+      <button class="icon-btn" type="button" data-theme-toggle title="{{ ui.theme_title }}" aria-label="{{ ui.theme_aria }}">
         <svg class="icon icon-sun"><use href="#i-sun"/></svg>
         <svg class="icon icon-moon"><use href="#i-moon"/></svg>
       </button>
       {%- if site.repository %}
-      <a class="icon-btn hide-sm" href="https://github.com/{{ site.repository }}" title="Materiaalin lähdekoodi GitHubissa" aria-label="Lähdekoodi GitHubissa">
+      <a class="icon-btn hide-sm" href="https://github.com/{{ site.repository }}" title="{{ ui.source_title }}" aria-label="{{ ui.source_aria }}">
         <svg class="icon icon-fill"><use href="#i-github"/></svg>
       </a>
       {%- endif %}

@@ -11,6 +11,21 @@
 
   const NS = "http://www.w3.org/2000/svg";
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+  // Interface strings in the page language (<html lang>).
+  const lang = document.documentElement.lang === "en" ? "en" : "fi";
+  const T = lang === "en" ? {
+    code: "code", noOutput: "(no output yet)", output: "Output", vars: "Variables",
+    restart: "Restart", restartTitle: "Restart (Home)", prev: "Previous step", prevTitle: "Previous (←)",
+    play: "Play", playTitle: "Play / pause (space)", pause: "Pause", next: "Next step", nextTitle: "Next (→)",
+    step: "Step", speed: "Speed", speedTitle: "Playback speed", interactive: "Interactive", view: "View",
+    failed: "The figure could not be shown.",
+  } : {
+    code: "koodi", noOutput: "(ei vielä tulostusta)", output: "Tuloste", vars: "Muuttujat",
+    restart: "Alkuun", restartTitle: "Alkuun (Home)", prev: "Edellinen vaihe", prevTitle: "Edellinen (←)",
+    play: "Toista", playTitle: "Toista / tauko (välilyönti)", pause: "Tauko", next: "Seuraava vaihe", nextTitle: "Seuraava (→)",
+    step: "Vaihe", speed: "Nopeus", speedTitle: "Toistonopeus", interactive: "Interaktiivinen", view: "Näkymä",
+    failed: "Kuvaa ei voitu näyttää.",
+  };
   const registry = Object.create(null);
 
   /* ------------------------------------------------------------- helpers */
@@ -509,7 +524,7 @@
 
   class CodePanel {
     constructor(parent, code, title = "python") {
-      this.el = h("div", { class: "viz-panel" }, h("div", { class: "viz-panel-head" }, h("span", { text: title }), h("span", { text: "koodi" })));
+      this.el = h("div", { class: "viz-panel" }, h("div", { class: "viz-panel-head" }, h("span", { text: title }), h("span", { text: T.code })));
       this.pre = h("pre", { class: "viz-code" });
       this.lines = code.replace(/\n$/, "").split("\n").map((ln) => {
         const el = h("span", { class: "ln", html: highlightPython(ln) || " " });
@@ -533,7 +548,7 @@
   }
 
   class OutputPanel {
-    constructor(parent, title = "Tuloste") {
+    constructor(parent, title = T.output) {
       this.el = h("div", { class: "viz-panel is-term" }, h("div", { class: "viz-panel-head" }, h("span", { text: title }), h("span", { text: "print" })));
       this.box = h("div", { class: "viz-out" });
       this.el.appendChild(this.box);
@@ -545,7 +560,7 @@
       if (lines.length === this.count && this.box.childElementCount) return;
       const grew = lines.length > this.count;
       this.box.textContent = "";
-      if (!lines.length) this.box.appendChild(h("span", { class: "o-empty", text: "(ei vielä tulostusta)" }));
+      if (!lines.length) this.box.appendChild(h("span", { class: "o-empty", text: T.noOutput }));
       lines.forEach((ln, i) => this.box.appendChild(h("span", { class: `o-line${grew && i === lines.length - 1 && this.count >= 0 ? " is-new" : ""}`, text: ln })));
       this.count = lines.length;
       this.box.scrollTop = this.box.scrollHeight;
@@ -553,7 +568,7 @@
   }
 
   class VarsPanel {
-    constructor(parent, title = "Muuttujat") {
+    constructor(parent, title = T.vars) {
       this.el = h("div", { class: "viz-panel" }, h("div", { class: "viz-panel-head" }, h("span", { text: title })));
       this.box = h("div", { class: "viz-vars" });
       this.el.appendChild(this.box);
@@ -580,13 +595,13 @@
       this.timer = 0;
       this.playing = false;
       this.bar = h("div", { class: "viz-bar" });
-      this.btnReset = h("button", { type: "button", class: "viz-btn", "aria-label": "Alkuun", title: "Alkuun (Home)", html: icon("reset") });
-      this.btnPrev = h("button", { type: "button", class: "viz-btn", "aria-label": "Edellinen vaihe", title: "Edellinen (←)", html: icon("prev") });
-      this.btnPlay = h("button", { type: "button", class: "viz-btn is-play", "aria-label": "Toista", title: "Toista / tauko (välilyönti)", html: icon("play") });
-      this.btnNext = h("button", { type: "button", class: "viz-btn", "aria-label": "Seuraava vaihe", title: "Seuraava (→)", html: icon("next") });
-      this.range = h("input", { type: "range", class: "viz-range", min: 0, max: 0, step: 1, value: 0, "aria-label": "Vaihe" });
+      this.btnReset = h("button", { type: "button", class: "viz-btn", "aria-label": T.restart, title: T.restartTitle, html: icon("reset") });
+      this.btnPrev = h("button", { type: "button", class: "viz-btn", "aria-label": T.prev, title: T.prevTitle, html: icon("prev") });
+      this.btnPlay = h("button", { type: "button", class: "viz-btn is-play", "aria-label": T.play, title: T.playTitle, html: icon("play") });
+      this.btnNext = h("button", { type: "button", class: "viz-btn", "aria-label": T.next, title: T.nextTitle, html: icon("next") });
+      this.range = h("input", { type: "range", class: "viz-range", min: 0, max: 0, step: 1, value: 0, "aria-label": T.step });
       this.count = h("span", { class: "viz-count" });
-      this.btnSpeed = h("button", { type: "button", class: "viz-btn is-text", "aria-label": "Nopeus", title: "Toistonopeus", text: "1×" });
+      this.btnSpeed = h("button", { type: "button", class: "viz-btn is-text", "aria-label": T.speed, title: T.speedTitle, text: "1×" });
       this.bar.append(this.btnReset, this.btnPrev, this.btnPlay, this.btnNext, this.range, this.count, this.btnSpeed);
       fig.appendChild(this.bar);
 
@@ -654,7 +669,7 @@
       if (this.i >= this.frames.length - 1) this.go(0);
       this.playing = true;
       this.btnPlay.innerHTML = icon("pause");
-      this.btnPlay.setAttribute("aria-label", "Tauko");
+      this.btnPlay.setAttribute("aria-label", T.pause);
       this.schedule();
     }
 
@@ -662,7 +677,7 @@
       this.playing = false;
       clearTimeout(this.timer);
       this.btnPlay.innerHTML = icon("play");
-      this.btnPlay.setAttribute("aria-label", "Toista");
+      this.btnPlay.setAttribute("aria-label", T.play);
     }
 
     toggle() {
@@ -690,7 +705,7 @@
 
   /* ---------------------------------------------------- Figure scaffolding */
   // Creates the standard figure layout and returns handles to its parts.
-  function frame(fig, { title, kicker = "Interaktiivinen", split = false, tabs = null, tab = null, onTab = null }) {
+  function frame(fig, { title, kicker = T.interactive, split = false, tabs = null, tab = null, onTab = null }) {
     fig.classList.add("is-ready");
     fig.tabIndex = 0;
     const head = h("div", { class: "viz-head" },
@@ -698,7 +713,7 @@
       h("span", { class: "viz-title", text: title || "" }));
     let tabButtons = [];
     if (tabs && tabs.length > 1) {
-      const box = h("div", { class: "viz-tabs", role: "tablist", "aria-label": "Näkymä" });
+      const box = h("div", { class: "viz-tabs", role: "tablist", "aria-label": T.view });
       tabButtons = tabs.map(([key, label]) => {
         const b = h("button", { type: "button", class: "viz-tab", role: "tab", "aria-selected": String(key === tab), text: label });
         b.addEventListener("click", () => {
@@ -744,7 +759,7 @@
     } catch (err) {
       console.error(`TiraViz: visualisointi "${name}" epäonnistui`, err);
       fig.classList.add("is-ready");
-      fig.appendChild(h("p", { class: "viz-caption", text: "Kuvaa ei voitu näyttää." }));
+      fig.appendChild(h("p", { class: "viz-caption", text: T.failed }));
     }
   }
 
@@ -770,7 +785,7 @@
     }
   }
 
-  window.TiraViz = { register: (name, fn) => { registry[name] = fn; }, h, s, esc, rich, fmt, icon, Scene, Player, CodePanel, OutputPanel, VarsPanel, frame, reduced, registry, mount };
+  window.TiraViz = { register: (name, fn) => { registry[name] = fn; }, lang, h, s, esc, rich, fmt, icon, Scene, Player, CodePanel, OutputPanel, VarsPanel, frame, reduced, registry, mount };
 
   if (document.readyState === "complete") start();
   else document.addEventListener("DOMContentLoaded", start, { once: true });

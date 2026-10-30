@@ -5,8 +5,8 @@
 <div class="page-eyebrow">
   <span class="eyebrow-part">{{ coll.nav_title }}</span>
   <span class="eyebrow-dot" aria-hidden="true"></span>
-  <span>Luku {{ page.title | split: "." | first }}</span>
+  <span>{{ ui.chapter }} {{ page.title | split: "." | first }}</span>
   <span class="eyebrow-dot" aria-hidden="true"></span>
-  <span class="eyebrow-time"><svg class="icon"><use href="#i-clock"/></svg> noin {{ minutes }} min</span>
+  <span class="eyebrow-time"><svg class="icon"><use href="#i-clock"/></svg> {{ ui.reading_time | replace: "%d", minutes }}</span>
 </div>
 {%- endif -%}

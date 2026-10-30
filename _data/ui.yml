@@ -1,0 +1,70 @@
+# Interface strings of the theme in each site language. A page's language is
+# `lang` in its front matter (set for whole collections under `defaults` in
+# _config.yml) and falls back to site.lang. The scripts carry the same strings
+# in assets/js/site.js and assets/js/viz-core.js.
+fi:
+  home_aria: etusivu
+  skip_link: Siirry sisältöön
+  nav_label: Navigointi
+  course_nav_label: Kurssin sisältö
+  toc_title: Tällä sivulla
+  menu_open: Avaa valikko
+  search_button: Hae materiaalista
+  search_button_aria: Hae materiaalista (Ctrl+K)
+  search_dialog: Haku materiaalista
+  search_placeholder: Hae materiaalista, esim. kekoon lisääminen
+  search_input: Hakusana
+  search_close: Sulje haku
+  search_results: Hakutulokset
+  search_select: valitse
+  search_open: avaa
+  zen: Zen-tila
+  zen_title: Zen-tila (Z)
+  zen_exit: Poistu
+  zen_exit_aria: Poistu zen-tilasta
+  theme_title: Vaihda teemaa
+  theme_aria: Vaihda vaalean ja tumman teeman välillä
+  theme_aria_short: Vaihda teemaa
+  source_title: Materiaalin lähdekoodi GitHubissa
+  source_aria: Lähdekoodi GitHubissa
+  chapter: Luku
+  reading_time: noin %d min
+  chapters_label: Luvut
+  prev_chapter: Edellinen luku
+  next_chapter: Seuraava luku
+  edit: Ehdota korjausta GitHubissa
+  university: Helsingin yliopisto
+  department: Tietojenkäsittelytieteen osasto
+en:
+  home_aria: front page
+  skip_link: Skip to content
+  nav_label: Navigation
+  course_nav_label: Course contents
+  toc_title: On this page
+  menu_open: Open menu
+  search_button: Search the material
+  search_button_aria: Search the material (Ctrl+K)
+  search_dialog: Search the material
+  search_placeholder: Search the material, e.g. heap insertion
+  search_input: Search term
+  search_close: Close search
+  search_results: Search results
+  search_select: select
+  search_open: open
+  zen: Zen mode
+  zen_title: Zen mode (Z)
+  zen_exit: Exit
+  zen_exit_aria: Exit zen mode
+  theme_title: Change theme
+  theme_aria: Switch between the light and dark theme
+  theme_aria_short: Change theme
+  source_title: Source of the material on GitHub
+  source_aria: Source on GitHub
+  chapter: Chapter
+  reading_time: about %d min
+  chapters_label: Chapters
+  prev_chapter: Previous chapter
+  next_chapter: Next chapter
+  edit: Suggest a fix on GitHub
+  university: University of Helsinki
+  department: Department of Computer Science

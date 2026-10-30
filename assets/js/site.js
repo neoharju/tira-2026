@@ -14,6 +14,18 @@
   };
   const channel = "BroadcastChannel" in window ? new BroadcastChannel("tira-prefs") : null;
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  // Interface strings in the page language (<html lang>), as in _data/ui.yml.
+  const T = root.lang === "en" ? {
+    readDone: "Finished", timeLeft: (n) => `about ${n} min left`, anchor: "Link to this section",
+    terminal: "terminal", output: "output", copy: "Copy", copied: "Copied", copyFailed: "Failed",
+    copyAria: "Copy the code to the clipboard", loading: "Loading the index…", noResults: "No results for",
+    chapter: "Chapter", page: "Page", results: (n) => (n === 1 ? "1 result" : `${n} results`),
+  } : {
+    readDone: "Luettu", timeLeft: (n) => `noin ${n} min jäljellä`, anchor: "Linkki tähän kohtaan",
+    terminal: "terminaali", output: "tuloste", copy: "Kopioi", copied: "Kopioitu", copyFailed: "Ei onnistunut",
+    copyAria: "Kopioi koodi leikepöydälle", loading: "Ladataan hakemistoa…", noResults: "Ei tuloksia haulle",
+    chapter: "Luku", page: "Sivu", results: (n) => (n === 1 ? "1 tulos" : `${n} tulosta`),
+  };
   const isTyping = (el) => el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
 
   /* ---------------------------------------------------------------- Theme */
@@ -121,7 +133,7 @@
       const time = $("#zen-time");
       if (time && proseWords) {
         const left = Math.ceil((proseWords * (1 - p)) / 180);
-        time.textContent = p > 0.995 ? "Luettu" : `noin ${Math.max(1, left)} min jäljellä`;
+        time.textContent = p > 0.995 ? T.readDone : T.timeLeft(Math.max(1, left));
       }
       updateSpy();
     });
@@ -208,7 +220,7 @@
       const a = document.createElement("a");
       a.className = "heading-anchor";
       a.href = `#${h.id}`;
-      a.setAttribute("aria-label", "Linkki tähän kohtaan");
+      a.setAttribute("aria-label", T.anchor);
       a.innerHTML = '<svg class="icon" aria-hidden="true"><use href="#i-hash"/></svg>';
       h.appendChild(a);
     }
@@ -228,7 +240,7 @@
   }
 
   const LANG_LABELS = {
-    python: "python", py: "python", console: "terminaali", plaintext: "tuloste", text: "tuloste",
+    python: "python", py: "python", console: T.terminal, plaintext: T.output, text: T.output,
     cpp: "c++", "c++": "c++", js: "javascript", javascript: "javascript", java: "java",
   };
 
@@ -269,8 +281,8 @@
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "copy-btn";
-      btn.innerHTML = '<svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg><span>Kopioi</span>';
-      btn.setAttribute("aria-label", "Kopioi koodi leikepöydälle");
+      btn.innerHTML = `<svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg><span>${T.copy}</span>`;
+      btn.setAttribute("aria-label", T.copyAria);
       btn.addEventListener("click", () => copyCode(block, btn));
       head.appendChild(btn);
 
@@ -301,11 +313,11 @@
     const label = $("span", btn);
     btn.classList.toggle("is-copied", ok);
     btn.querySelector("use").setAttribute("href", ok ? "#i-check" : "#i-copy");
-    label.textContent = ok ? "Kopioitu" : "Ei onnistunut";
+    label.textContent = ok ? T.copied : T.copyFailed;
     setTimeout(() => {
       btn.classList.remove("is-copied");
       btn.querySelector("use").setAttribute("href", "#i-copy");
-      label.textContent = "Kopioi";
+      label.textContent = T.copy;
     }, 1800);
   }
 
@@ -394,7 +406,7 @@
     search.results = [];
     search.selected = -1;
     if (!terms.length || !search.docs) {
-      search.list.innerHTML = q && !search.docs ? '<li class="search-empty">Ladataan hakemistoa…</li>' : "";
+      search.list.innerHTML = q && !search.docs ? `<li class="search-empty">${T.loading}</li>` : "";
       search.count.textContent = "";
       return;
     }
@@ -425,7 +437,7 @@
     search.results = search.results.slice(0, 14);
 
     if (!search.results.length) {
-      search.list.innerHTML = `<li class="search-empty">Ei tuloksia haulle <strong>${escapeHtml(q)}</strong></li>`;
+      search.list.innerHTML = `<li class="search-empty">${T.noResults} <strong>${escapeHtml(q)}</strong></li>`;
       search.count.textContent = "";
       return;
     }
@@ -458,13 +470,13 @@
         if (exact.trim()) href += `#:~:text=${encodeURIComponent(exact)}`;
       }
       if (r.sectionHit) href = `${d.u}#${slugify(r.sectionHit)}`;
-      const kind = /\/osa\d+\/$/.test(d.u) ? "Luku" : "Sivu";
+      const kind = d.k ? T.chapter : T.page;
       const sub = r.sectionHit ? ` <span class="sr-kind">› ${escapeHtml(r.sectionHit)}</span>` : "";
       return `<li class="search-result" role="option" id="sr-${i}" aria-selected="false">
         <a href="${escapeHtml(href)}"><span class="sr-title">${highlight(d.t)}<span class="sr-kind">${kind}</span>${sub}</span>
         ${snippet ? `<span class="sr-snippet">${highlight(snippet)}</span>` : ""}</a></li>`;
     }).join("");
-    search.count.textContent = `${search.results.length} tulosta`;
+    search.count.textContent = T.results(search.results.length);
     select(0);
   }
 

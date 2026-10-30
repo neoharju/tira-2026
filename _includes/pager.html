@@ -1,5 +1,7 @@
 {%- if page.collection -%}
-{%- assign chapters = site.material_1 | concat: site.material_2 -%}
+{%- comment %} All chapters of all parts (collections material_1, material_2, …) in order. {% endcomment -%}
+{%- assign chapters = "" | split: "" -%}
+{%- for c in site.collections -%}{%- if c.label contains "material_" -%}{%- assign chapters = chapters | concat: c.docs -%}{%- endif -%}{%- endfor -%}
 {%- assign prev = nil -%}{%- assign next = nil -%}
 {%- for c in chapters -%}
   {%- if c.url == page.url -%}
@@ -9,16 +11,16 @@
     {%- assign next = chapters[i_next] -%}
   {%- endif -%}
 {%- endfor -%}
-<nav class="pager" aria-label="Luvut">
+<nav class="pager" aria-label="{{ ui.chapters_label }}">
   {%- if prev %}
   <a class="pager-link pager-prev" href="{{ prev.url | relative_url }}" rel="prev">
-    <span class="pager-dir"><svg class="icon"><use href="#i-arrow-left"/></svg> Edellinen luku</span>
+    <span class="pager-dir"><svg class="icon"><use href="#i-arrow-left"/></svg> {{ ui.prev_chapter }}</span>
     <span class="pager-title">{{ prev.title }}</span>
   </a>
   {%- else %}<span></span>{% endif %}
   {%- if next %}
   <a class="pager-link pager-next" href="{{ next.url | relative_url }}" rel="next">
-    <span class="pager-dir">Seuraava luku <svg class="icon"><use href="#i-arrow-right"/></svg></span>
+    <span class="pager-dir">{{ ui.next_chapter }} <svg class="icon"><use href="#i-arrow-right"/></svg></span>
     <span class="pager-title">{{ next.title }}</span>
   </a>
   {%- endif %}

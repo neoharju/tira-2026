@@ -7,11 +7,13 @@ Search index. The file name makes Jekyll render it after every other page,
 so their content is already converted to HTML here.
 {%- endcomment -%}
 [
-{%- assign docs = site.material_1 | concat: site.material_2 | concat: site.html_pages -%}
+{%- assign docs = "" | split: "" -%}
+{%- for c in site.collections -%}{%- if c.label contains "material_" -%}{%- assign docs = docs | concat: c.docs -%}{%- endif -%}{%- endfor -%}
+{%- assign docs = docs | concat: site.html_pages -%}
 {%- assign first = true -%}
 {%- for p in docs -%}
   {%- if p.url == "/404.html" or p.url contains "/kaikki" -%}{%- continue -%}{%- endif -%}
   {%- unless first -%},{%- endunless -%}{%- assign first = false %}
-{"t":{{ p.title | jsonify }},"u":{{ p.url | relative_url | jsonify }},"s":{% if p.sections %}{{ p.sections | jsonify }}{% else %}[]{% endif %},"c":{{ p.content | strip_html | normalize_whitespace | jsonify }}}
+{"t":{{ p.title | jsonify }},"u":{{ p.url | relative_url | jsonify }},"k":{% if p.collection %}1{% else %}0{% endif %},"s":{% if p.sections %}{{ p.sections | jsonify }}{% else %}[]{% endif %},"c":{{ p.content | strip_html | normalize_whitespace | jsonify }}}
 {%- endfor %}
 ]

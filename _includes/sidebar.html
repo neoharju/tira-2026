@@ -1,4 +1,4 @@
-<nav class="nav" aria-label="Kurssin sisältö">
+<nav class="nav" aria-label="{{ ui.course_nav_label }}">
   <ul class="nav-list">
     {%- assign top_pages = site.html_pages | where: "collection", nil %}
     {%- for p in top_pages %}{% unless p.hide %}

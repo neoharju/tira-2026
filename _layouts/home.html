@@ -40,7 +40,9 @@ layout: base
 <section class="chapters" aria-labelledby="chapters-title">
   <div class="section-head">
     <h2 id="chapters-title">Materiaali</h2>
-    <p>16 lukua kahdessa osassa. Jokainen luku vastaa yhtä kurssiviikkoa.</p>
+    {%- assign n_chapters = 0 %}{% assign n_parts = 0 %}
+    {%- for c in site.collections %}{% if c.label contains "material_" and c.docs.size > 0 %}{% assign n_chapters = n_chapters | plus: c.docs.size %}{% assign n_parts = n_parts | plus: 1 %}{% endif %}{% endfor %}
+    <p>{{ n_chapters }} lukua {% if n_parts == 2 %}kahdessa{% else %}{{ n_parts }}{% endif %} osassa. Jokainen luku vastaa yhtä kurssiviikkoa.</p>
   </div>
   {%- for c in site.collections %}{% unless c.label == "posts" %}{% if c.docs.size > 0 %}
   <div class="chapter-group">
@@ -53,7 +55,7 @@ layout: base
         <a class="chapter-card" href="{{ p.url | relative_url }}">
           <span class="chapter-card-top">
             <span class="chapter-num">{{ num }}</span>
-            <svg class="chapter-glyph" aria-hidden="true"><use href="#c-{{ p.slug }}"/></svg>
+            <svg class="chapter-glyph" aria-hidden="true"><use href="#c-{{ p.glyph | default: p.slug }}"/></svg>
           </span>
           <span class="chapter-name">{{ name }}</span>
           {%- if p.sections %}

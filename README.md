@@ -71,6 +71,14 @@ sections:
 Other pages are Markdown files in the root directory. Pages with `hide: true`
 are not listed in the navigation.
 
+Parts I–II are in Finnish and Parts III–V (`_material_3`–`_material_5`) in
+English. The language of a page is `lang` in its front matter, set for each
+part under `defaults` in `_config.yml`; it selects the interface strings
+(`_data/ui.yml`, and the tables at the top of `assets/js/site.js` and
+`assets/js/viz-core.js`). A chapter's icon on the front page is
+`#c-<slug>` from `_includes/icons.html`; for a new chapter, set `glyph:` to
+one of the existing icons (for example `glyph: osa14`).
+
 Formatting conventions (kramdown, GFM input):
 
 | What | How |

@@ -1,15 +1,16 @@
+{%- include ui.html -%}
 <!DOCTYPE html>
-<html lang="{{ site.lang | default: 'fi' }}">
+<html lang="{{ lang }}">
 <head>
 {% include head.html %}
 </head>
 <body class="{% if page.layout == 'home' %}is-home{% endif %}{% if page.collection %} is-chapter{% endif %}">
 {% include icons.html %}
-<a class="skip-link" href="#main">Siirry sisältöön</a>
+<a class="skip-link" href="#main">{{ ui.skip_link }}</a>
 <div class="read-progress" aria-hidden="true"><span id="read-progress-bar"></span></div>
 {% include topbar.html %}
 <div class="shell">
-  <aside class="sidebar" id="sidebar" aria-label="Navigointi">
+  <aside class="sidebar" id="sidebar" aria-label="{{ ui.nav_label }}">
     <div class="sidebar-inner">
       {% include sidebar.html %}
     </div>
@@ -19,9 +20,9 @@
     {{ content }}
     {% include footer.html %}
   </main>
-  <aside class="toc" aria-label="Tällä sivulla">
+  <aside class="toc" aria-label="{{ ui.toc_title }}">
     <div class="toc-inner" hidden>
-      <p class="toc-title">Tällä sivulla</p>
+      <p class="toc-title">{{ ui.toc_title }}</p>
       <nav class="toc-nav" id="toc"></nav>
     </div>
   </aside>
@@ -29,8 +30,8 @@
 <div class="zen-pill" aria-live="polite">
   <span class="zen-pill-label"><svg class="icon"><use href="#i-zen"/></svg> Zen</span>
   <span class="zen-pill-time" id="zen-time"></span>
-  <button type="button" class="zen-pill-btn" data-theme-toggle aria-label="Vaihda teemaa"><svg class="icon icon-sun"><use href="#i-sun"/></svg><svg class="icon icon-moon"><use href="#i-moon"/></svg></button>
-  <button type="button" class="zen-pill-btn zen-pill-exit" data-zen-toggle aria-label="Poistu zen-tilasta">Poistu <kbd>Esc</kbd></button>
+  <button type="button" class="zen-pill-btn" data-theme-toggle aria-label="{{ ui.theme_aria_short }}"><svg class="icon icon-sun"><use href="#i-sun"/></svg><svg class="icon icon-moon"><use href="#i-moon"/></svg></button>
+  <button type="button" class="zen-pill-btn zen-pill-exit" data-zen-toggle aria-label="{{ ui.zen_exit_aria }}">{{ ui.zen_exit }} <kbd>Esc</kbd></button>
 </div>
 {% include search.html %}
 </body>
