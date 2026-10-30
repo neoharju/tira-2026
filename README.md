@@ -20,7 +20,7 @@ nothing from third-party servers (fonts, KaTeX and all scripts are in
 docker compose up
 ```
 
-Open <http://localhost:4000/kevat-2026/>. Edits to the Markdown, layouts and
+Open <http://localhost:4000/tira-2026/>. Edits to the Markdown, layouts and
 assets are rebuilt automatically and the browser reloads itself. On Windows,
 or anywhere file changes are not picked up, use the `--force_polling` command
 in `docker-compose.yml`.
@@ -49,7 +49,7 @@ is caught before it is published. To publish from the workflow instead of the
 classic build, set *Settings → Pages → Source* to *GitHub Actions* and add the
 repository variable `DEPLOY_WITH_ACTIONS` with the value `true`.
 
-`baseurl` in `_config.yml` is `/kevat-2026`. For a site served from the root
+`baseurl` in `_config.yml` is `/tira-2026`. For a site served from the root
 of a domain, set it to `""`.
 
 ## Writing material
