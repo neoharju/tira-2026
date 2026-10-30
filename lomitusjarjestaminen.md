@@ -37,7 +37,7 @@ def merge_sort(items):
     a = b = 0
     for i in range(n):
         if b == len(right) or \
-           (a < len(left) and left[a] < right[b]):
+           (a < len(left) and left[a] <= right[b]):
             items[i] = left[a]
             a += 1
         else:
@@ -51,7 +51,7 @@ print(numbers) # [1, 2, 2, 4, 5, 6]
 
 Funktio `merge_sort` järjestää sille annetun listan lomitusjärjestämisen avulla. Jos listalla on enintään yksi alkio, funktio ei tee mitään. Muuten funktio jakaa listan kahteen puoliskoon (`left` ja `right`) ja järjestää ne rekursiivisesti.
 
-Puoliskojen järjestämisen jälkeen funktio rakentaa kokonaisen järjestetyn listan. Tämä on toteutettu niin, että funktio käy listan kohdat läpi vasemmalta oikealle ja valitsee jokaiseen kohtaan mahdollisimman pienen jäljellä olevan alkion listasta `left` tai `right`. Koska puoliskot ovat järjestyksessä, kummankin puoliskon pienin alkio löytyy tehokkaasti joka vaiheessa.
+Puoliskojen järjestämisen jälkeen funktio rakentaa kokonaisen järjestetyn listan. Tämä on toteutettu niin, että funktio käy listan kohdat läpi vasemmalta oikealle ja valitsee jokaiseen kohtaan mahdollisimman pienen jäljellä olevan alkion listasta `left` tai `right`. Koska puoliskot ovat järjestyksessä, kummankin puoliskon pienin alkio löytyy tehokkaasti joka vaiheessa. Kun puoliskoissa on yhtä suuret alkiot, vertailu `<=` valitsee ensin vasemman puoliskon alkion, minkä ansiosta yhtä suurten alkioiden keskinäinen järjestys säilyy eli järjestäminen on _vakaa_ (_stable_).
 
 Huomaa, että funktion `merge_sort` tarkoituksena on havainnollistaa, miten lomitusjärjestäminen toimii, eikä antaa esimerkkiä siitä, miten järjestäminen kannattaa toteuttaa Python-ohjelmoinnissa. Funktion `merge_sort` sijasta järjestämiseen kannattaa käyttää Pythonin valmiita menetelmiä (`sort` tai `sorted`).
 
