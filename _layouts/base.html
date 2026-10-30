@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="{{ site.lang | default: 'fi' }}">
+<head>
+{% include head.html %}
+</head>
+<body class="{% if page.layout == 'home' %}is-home{% endif %}{% if page.collection %} is-chapter{% endif %}">
+{% include icons.html %}
+<a class="skip-link" href="#main">Siirry sisältöön</a>
+<div class="read-progress" aria-hidden="true"><span id="read-progress-bar"></span></div>
+{% include topbar.html %}
+<div class="shell">
+  <aside class="sidebar" id="sidebar" aria-label="Navigointi">
+    <div class="sidebar-inner">
+      {% include sidebar.html %}
+    </div>
+  </aside>
+  <div class="scrim" data-nav-close hidden></div>
+  <main class="main" id="main" tabindex="-1">
+    {{ content }}
+    {% include footer.html %}
+  </main>
+  <aside class="toc" aria-label="Tällä sivulla">
+    <div class="toc-inner" hidden>
+      <p class="toc-title">Tällä sivulla</p>
+      <nav class="toc-nav" id="toc"></nav>
+    </div>
+  </aside>
+</div>
+{% include search.html %}
+</body>
+</html>

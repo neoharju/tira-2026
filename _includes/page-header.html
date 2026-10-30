@@ -1,0 +1,12 @@
+{%- if page.collection -%}
+{%- assign coll = site.collections | where: "label", page.collection | first -%}
+{%- assign words = page.content | strip_html | number_of_words -%}
+{%- assign minutes = words | divided_by: 150 | plus: 1 -%}
+<div class="page-eyebrow">
+  <span class="eyebrow-part">{{ coll.nav_title }}</span>
+  <span class="eyebrow-dot" aria-hidden="true"></span>
+  <span>Luku {{ page.title | split: "." | first }}</span>
+  <span class="eyebrow-dot" aria-hidden="true"></span>
+  <span class="eyebrow-time"><svg class="icon"><use href="#i-clock"/></svg> noin {{ minutes }} min</span>
+</div>
+{%- endif -%}

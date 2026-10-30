@@ -1,0 +1,33 @@
+<nav class="nav" aria-label="Kurssin sisältö">
+  <ul class="nav-list">
+    {%- assign top_pages = site.html_pages | where: "collection", nil %}
+    {%- for p in top_pages %}{% unless p.hide %}
+    <li><a class="nav-link{% if p.url == page.url %} is-current{% endif %}" href="{{ p.url | relative_url }}"{% if p.url == page.url %} aria-current="page"{% endif %}>{{ p.title }}</a></li>
+    {%- endunless %}{% endfor %}
+  </ul>
+  {%- for c in site.collections %}{% unless c.label == "posts" %}{% if c.docs.size > 0 %}
+  <div class="nav-group">
+    <p class="nav-group-title">{{ c.nav_title | default: c.label }}{% if c.nav_subtitle %} <span>{{ c.nav_subtitle }}</span>{% endif %}</p>
+    <ul class="nav-list nav-chapters">
+      {%- for p in c.docs %}
+      {%- assign num = p.title | split: "." | first %}
+      {%- assign name = p.title | remove_first: num | remove_first: "." | strip %}
+      {%- assign current = false %}{% if p.url == page.url %}{% assign current = true %}{% endif %}
+      <li class="{% if current %}is-open{% endif %}">
+        <a class="nav-link nav-chapter{% if current %} is-current{% endif %}" href="{{ p.url | relative_url }}"{% if current %} aria-current="page"{% endif %}>
+          <span class="nav-num">{{ num }}</span><span class="nav-name">{{ name }}</span>
+        </a>
+        {%- if current and p.sections %}
+        <ul class="nav-sections">
+          {%- for s in p.sections %}
+          {%- assign t = s.title | default: s %}{% assign a = s.anchor | default: t | slugify %}
+          <li><a href="#{{ a }}" data-anchor="{{ a }}">{{ t }}</a></li>
+          {%- endfor %}
+        </ul>
+        {%- endif %}
+      </li>
+      {%- endfor %}
+    </ul>
+  </div>
+  {%- endif %}{% endunless %}{% endfor %}
+</nav>

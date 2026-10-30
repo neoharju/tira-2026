@@ -1,0 +1,16 @@
+<footer class="site-footer">
+  {%- if site.repository and page.path and page.layout != "collection" %}
+  {%- assign src = page.path %}{% if page.collection %}{% assign src = page.relative_path | default: page.path %}{% endif %}
+  <a class="footer-edit" href="https://github.com/{{ site.repository }}/edit/{{ site.repository_branch | default: 'main' }}/{{ src }}">
+    <svg class="icon"><use href="#i-edit"/></svg> Ehdota korjausta GitHubissa
+  </a>
+  {%- endif %}
+  <div class="footer-row">
+    <img class="footer-logo logo-light" src="{{ '/assets/img/hy_logo.svg' | relative_url }}" alt="Helsingin yliopisto" width="72" height="76">
+    <img class="footer-logo logo-dark" src="{{ '/assets/img/hy_logo_neg.svg' | relative_url }}" alt="" width="72" height="76">
+    <p>
+      <strong>{{ site.title }}</strong>, {{ site.subtitle }}<br>
+      Helsingin yliopisto · Tietojenkäsittelytieteen osasto
+    </p>
+  </div>
+</footer>

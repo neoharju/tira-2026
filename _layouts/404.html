@@ -1,0 +1,13 @@
+---
+layout: base
+---
+<section class="not-found">
+  <p class="not-found-code" aria-hidden="true">404</p>
+  <h1>Sivua ei löytynyt</h1>
+  <p>Etsimääsi sivua ei ole olemassa tai se on siirretty. Kokeile hakua tai palaa etusivulle.</p>
+  <div class="hero-actions">
+    <a class="btn btn-primary" href="{{ '/' | relative_url }}">Etusivulle <svg class="icon"><use href="#i-arrow-right"/></svg></a>
+    <button class="btn btn-ghost" type="button" data-open-search><svg class="icon"><use href="#i-search"/></svg> Hae materiaalista</button>
+  </div>
+  {{ content }}
+</section>

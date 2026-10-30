@@ -1,14 +1,18 @@
 title: Tietorakenteet ja algoritmit
 subtitle: kevät 2026
+description: Helsingin yliopiston kurssin Tietorakenteet ja algoritmit verkkomateriaali (kevät 2026).
 lang: fi
 baseurl: "/kevat-2026"
 url: "https://tira.mooc.fi"
 theme-color: '#e76c97'
 
-plugins:
-  - jekyll-remote-theme
+# The theme lives in this repository (_layouts, _includes, assets). Setting
+# theme to null stops GitHub Pages from adding its default Primer theme.
+theme: null
 
-remote_theme: ollpu/jekyll-course-theme@v2
+# Source repository, used for "Muokkaa GitHubissa" links.
+repository: hy-tira/kevat-2026
+repository_branch: main
 
 markdown: kramdown
 highlighter: rouge
@@ -19,19 +23,18 @@ kramdown:
 
 permalink: /:title/
 
-hide_other_section_menus: true
-
-small_code_font: true
-
-# If you want a collection of pages for course material:
+# Course material. nav_title/nav_subtitle are shown in the navigation.
 collections:
-  # In Finnish you might want to write e.g. "materiaali:" instead.
   material_1:
     output: true
     permalink: /:title/
+    nav_title: Osa I
+    nav_subtitle: Viikot 1–8
   material_2:
     output: true
     permalink: /:title/
+    nav_title: Osa II
+    nav_subtitle: Viikot 9–16
 
 defaults:
   -

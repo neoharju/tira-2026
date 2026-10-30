@@ -1,9 +1,34 @@
 ---
 title: Etusivu
 permalink: /
+layout: home
+hero:
+  eyebrow: Helsingin yliopisto
+  title_start: Tietorakenteet
+  title_end: ja algoritmit
+  lead: Kurssin tavoitteena on syventää ohjelmointitaitoa ja opettaa ajattelua ja tekniikoita, joiden avulla voi toteuttaa ohjelmia, jotka toimivat oikein ja tehokkaasti kaikissa tilanteissa.
+  actions:
+    - title: Aloita materiaali
+      url: /osa1/
+      primary: true
+    - title: Tehtävät
+      url: https://cses.fi/tira26k/list/
+      icon: code
+    - title: Discord
+      url: https://study.cs.helsinki.fi/discord/join/tira
+      icon: chat
+  stats:
+    - label: Laajuus
+      value: 2 × 5 op
+    - label: Viikkoja
+      value: "16"
+    - label: Tehtäviä
+      value: "128"
+    - label: Kieli
+      value: Python
 ---
 
-# Tietorakenteet ja algoritmit, kevät 2026
+## Kurssin suorittaminen
 
 Kurssi muodostuu kahdesta 5 op laajuisesta osasuorituksesta. Kurssi suoritetaan ratkomalla tehtäviä verkossa sekä osallistumalla tentteihin.
 

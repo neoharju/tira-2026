@@ -1,0 +1,26 @@
+{%- if page.collection -%}
+{%- assign chapters = site.material_1 | concat: site.material_2 -%}
+{%- assign prev = nil -%}{%- assign next = nil -%}
+{%- for c in chapters -%}
+  {%- if c.url == page.url -%}
+    {%- assign i_prev = forloop.index0 | minus: 1 -%}
+    {%- assign i_next = forloop.index0 | plus: 1 -%}
+    {%- if i_prev >= 0 %}{% assign prev = chapters[i_prev] %}{% endif -%}
+    {%- assign next = chapters[i_next] -%}
+  {%- endif -%}
+{%- endfor -%}
+<nav class="pager" aria-label="Luvut">
+  {%- if prev %}
+  <a class="pager-link pager-prev" href="{{ prev.url | relative_url }}" rel="prev">
+    <span class="pager-dir"><svg class="icon"><use href="#i-arrow-left"/></svg> Edellinen luku</span>
+    <span class="pager-title">{{ prev.title }}</span>
+  </a>
+  {%- else %}<span></span>{% endif %}
+  {%- if next %}
+  <a class="pager-link pager-next" href="{{ next.url | relative_url }}" rel="next">
+    <span class="pager-dir">Seuraava luku <svg class="icon"><use href="#i-arrow-right"/></svg></span>
+    <span class="pager-title">{{ next.title }}</span>
+  </a>
+  {%- endif %}
+</nav>
+{%- endif -%}

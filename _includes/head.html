@@ -1,0 +1,30 @@
+{%- assign has_math = false -%}
+{%- if content contains '\(' or content contains '\[' -%}{%- assign has_math = true -%}{%- endif -%}
+{%- assign v = site.time | date: '%s' -%}
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+{%- if jekyll.environment == "production" %}
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+{%- endif %}
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>{% if page.title and page.url != "/" %}{{ page.title }} – {% endif %}{{ site.title }}</title>
+<meta name="description" content="{{ page.description | default: site.description | strip_html | normalize_whitespace | truncate: 160 | escape }}">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#fbfbfd" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b0c12" media="(prefers-color-scheme: dark)">
+<meta property="og:title" content="{% if page.title and page.url != '/' %}{{ page.title }} – {% endif %}{{ site.title }}">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="fi_FI">
+<link rel="canonical" href="{{ page.url | absolute_url }}">
+<link rel="icon" href="{{ '/assets/img/favicon.svg' | relative_url }}" type="image/svg+xml">
+<link rel="preload" href="{{ '/assets/fonts/geist-latin-wght-normal.woff2' | relative_url }}" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="{{ '/assets/css/main.css' | relative_url }}?v={{ v }}">
+{%- if has_math %}
+<link rel="stylesheet" href="{{ '/assets/katex/katex.min.css' | relative_url }}">
+{%- endif %}
+<script src="{{ '/assets/js/boot.js' | relative_url }}?v={{ v }}"></script>
+<script defer src="{{ '/assets/js/site.js' | relative_url }}?v={{ v }}"></script>
+{%- if has_math %}
+<script defer src="{{ '/assets/katex/katex.min.js' | relative_url }}"></script>
+<script defer src="{{ '/assets/katex/contrib/auto-render.min.js' | relative_url }}"></script>
+{%- endif %}

@@ -1,0 +1,16 @@
+---
+layout: base
+---
+<article class="prose" data-url="{{ page.url }}">
+{{ content }}
+</article>
+{%- assign collection = site.collections | where: "label", page.collection-label | first %}
+{%- for p in collection.docs %}
+{%- comment %} Heading ids repeat between chapters, so each chapter's ids (and links to them) get a prefix such as "osa5-". {% endcomment %}
+{%- assign part = p.url | remove: "/" %}
+{%- assign id_prefix = ' id="' | append: part | append: '-' %}
+{%- assign href_prefix = ' href="#' | append: part | append: '-' %}
+<article class="prose prose-part" data-url="{{ p.url }}" id="{{ part }}">
+{{ p.content | replace: ' id="', id_prefix | replace: ' href="#', href_prefix }}
+</article>
+{%- endfor %}

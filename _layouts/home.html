@@ -1,0 +1,75 @@
+---
+layout: base
+---
+{%- assign hero = page.hero -%}
+<section class="hero" aria-labelledby="hero-title">
+  <div class="hero-glow" aria-hidden="true"></div>
+  <div class="hero-content">
+    <p class="hero-eyebrow">
+      <span class="pill"><span class="pill-dot" aria-hidden="true"></span>{{ hero.eyebrow | default: "Helsingin yliopisto" }}</span>
+      <span class="hero-term">{{ site.subtitle }}</span>
+    </p>
+    <h1 class="hero-title" id="hero-title">{{ hero.title_start | default: "Tietorakenteet" }} <span class="grad-text">{{ hero.title_end | default: "ja algoritmit" }}</span></h1>
+    {%- if hero.lead %}
+    <p class="hero-lead">{{ hero.lead }}</p>
+    {%- endif %}
+    {%- if hero.actions %}
+    <div class="hero-actions">
+      {%- for a in hero.actions %}
+      {%- assign external = false %}{% if a.url contains "://" %}{% assign external = true %}{% endif %}
+      <a class="btn {% if a.primary %}btn-primary{% else %}btn-ghost{% endif %}" href="{% if external %}{{ a.url }}{% else %}{{ a.url | relative_url }}{% endif %}">
+        {%- if a.icon %}<svg class="icon"><use href="#i-{{ a.icon }}"/></svg>{% endif %}{{ a.title }}
+        {%- if a.primary %}<svg class="icon"><use href="#i-arrow-right"/></svg>{% elsif external %}<svg class="icon icon-ext"><use href="#i-external"/></svg>{% endif -%}
+      </a>
+      {%- endfor %}
+    </div>
+    {%- endif %}
+    {%- if hero.stats %}
+    <dl class="hero-stats">
+      {%- for s in hero.stats %}
+      <div><dt>{{ s.label }}</dt><dd>{{ s.value }}</dd></div>
+      {%- endfor %}
+    </dl>
+    {%- endif %}
+  </div>
+  <div class="hero-art" aria-hidden="true">
+    <svg class="hero-graph" id="hero-graph" viewBox="0 0 440 400" focusable="false"></svg>
+  </div>
+</section>
+
+<section class="chapters" aria-labelledby="chapters-title">
+  <div class="section-head">
+    <h2 id="chapters-title">Materiaali</h2>
+    <p>16 lukua kahdessa osassa. Jokainen luku vastaa yhtä kurssiviikkoa.</p>
+  </div>
+  {%- for c in site.collections %}{% unless c.label == "posts" %}{% if c.docs.size > 0 %}
+  <div class="chapter-group">
+    <h3 class="chapter-group-title">{{ c.nav_title }} <span>{{ c.nav_subtitle }}</span></h3>
+    <ol class="chapter-grid">
+      {%- for p in c.docs %}
+      {%- assign num = p.title | split: "." | first %}
+      {%- assign name = p.title | remove_first: num | remove_first: "." | strip %}
+      <li>
+        <a class="chapter-card" href="{{ p.url | relative_url }}">
+          <span class="chapter-card-top">
+            <span class="chapter-num">{{ num }}</span>
+            <svg class="chapter-glyph" aria-hidden="true"><use href="#c-{{ p.slug }}"/></svg>
+          </span>
+          <span class="chapter-name">{{ name }}</span>
+          {%- if p.sections %}
+          <span class="chapter-sections">
+            {%- for s in p.sections limit: 3 %}{{ s.title | default: s | remove: '"' }}{% unless forloop.last %} · {% endunless %}{% endfor %}
+            {%- if p.sections.size > 3 %} · …{% endif -%}
+          </span>
+          {%- endif %}
+        </a>
+      </li>
+      {%- endfor %}
+    </ol>
+  </div>
+  {%- endif %}{% endunless %}{% endfor %}
+</section>
+
+<article class="prose home-prose">
+{{ content }}
+</article>

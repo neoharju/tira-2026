@@ -1,0 +1,15 @@
+<dialog class="search" id="search" aria-label="Haku materiaalista" data-index="{{ '/search.json' | relative_url }}">
+  <div class="search-panel">
+    <div class="search-field">
+      <svg class="icon"><use href="#i-search"/></svg>
+      <input type="search" id="search-input" placeholder="Hae materiaalista, esim. kekoon lisääminen" autocomplete="off" spellcheck="false" aria-label="Hakusana" aria-controls="search-results" aria-autocomplete="list">
+      <button class="search-close" type="button" data-close-search aria-label="Sulje haku"><kbd>Esc</kbd></button>
+    </div>
+    <ul class="search-results" id="search-results" role="listbox" aria-label="Hakutulokset"></ul>
+    <div class="search-foot" aria-hidden="true">
+      <span><kbd>↑</kbd><kbd>↓</kbd> valitse</span>
+      <span><kbd>↵</kbd> avaa</span>
+      <span class="search-count" id="search-count"></span>
+    </div>
+  </div>
+</dialog>
