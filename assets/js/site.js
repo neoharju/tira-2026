@@ -1,5 +1,5 @@
-/* Site behaviour: theme, navigation, table of contents, code blocks, math,
-   search and the animated graph on the front page. No dependencies. */
+/* Site behaviour: theme, zen mode, navigation, table of contents, code blocks,
+   math, search and the animated graph on the front page. No dependencies. */
 (() => {
   "use strict";
 
@@ -36,9 +36,31 @@
 
   darkQuery.addEventListener("change", applyTheme);
 
+  /* ------------------------------------------------------------- Zen mode */
+  let zenUiTimer = 0;
+
+  function setZen(on, broadcast = true) {
+    root.classList.toggle("zen", on);
+    store.set("tira-zen", on ? "1" : null);
+    $$("[data-zen-toggle]").forEach((b) => b.setAttribute("aria-pressed", String(on)));
+    if (on) {
+      closeNav();
+      flashZenUi();
+    }
+    onScroll();
+    if (broadcast && channel) channel.postMessage("zen");
+  }
+
+  function flashZenUi() {
+    root.classList.add("zen-ui");
+    clearTimeout(zenUiTimer);
+    zenUiTimer = setTimeout(() => root.classList.remove("zen-ui"), 2200);
+  }
+
   if (channel) {
     channel.onmessage = (event) => {
       if (event.data === "theme") applyTheme();
+      if (event.data === "zen") setZen(store.get("tira-zen") === "1", false);
     };
   }
 
@@ -76,6 +98,7 @@
   /* ------------------------------------------- Scroll: progress & topbar */
   let lastY = window.scrollY;
   let ticking = false;
+  let proseWords = 0;
 
   function onScroll() {
     if (ticking) return;
@@ -91,9 +114,15 @@
       root.classList.toggle("scrolled", y > 80);
       if (Math.abs(y - lastY) > 6) {
         root.classList.toggle("scrolled-down", y > lastY && y > 240);
+        if (y < lastY && root.classList.contains("zen")) flashZenUi();
         lastY = y;
       }
 
+      const time = $("#zen-time");
+      if (time && proseWords) {
+        const left = Math.ceil((proseWords * (1 - p)) / 180);
+        time.textContent = p > 0.995 ? "Luettu" : `noin ${Math.max(1, left)} min jäljellä`;
+      }
       updateSpy();
     });
   }
@@ -137,7 +166,7 @@
 
   function updateSpy() {
     if (!spyHeadings.length) return;
-    const line = 80 + window.innerHeight * 0.18;
+    const line = (root.classList.contains("zen") ? 40 : 80) + window.innerHeight * 0.18;
     let current = null;
     for (const h of spyHeadings) {
       if (h.getBoundingClientRect().top <= line) current = h; else break;
@@ -594,6 +623,10 @@
   /* ------------------------------------------------------------- Wiring */
   function init() {
     $$("[data-theme-toggle]").forEach((b) => b.addEventListener("click", toggleTheme));
+    $$("[data-zen-toggle]").forEach((b) => {
+      b.setAttribute("aria-pressed", String(root.classList.contains("zen")));
+      b.addEventListener("click", () => setZen(!root.classList.contains("zen")));
+    });
     $$("[data-nav-toggle]").forEach((b) => b.addEventListener("click", () => {
       if (root.classList.contains("nav-open")) closeNav(true); else openNav();
     }));
@@ -609,6 +642,9 @@
     initSearch();
     initHeroGraph();
 
+    const prose = $$(".main .prose");
+    proseWords = prose.reduce((n, p) => n + (p.textContent.match(/\S+/g) || []).length, 0);
+
     document.addEventListener("keydown", (e) => {
       if ((e.key === "k" || e.key === "K") && (e.metaKey || e.ctrlKey) && !e.altKey) {
         e.preventDefault();
@@ -617,11 +653,16 @@
       }
       if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || isTyping(document.activeElement)) return;
       if (e.key === "/") { e.preventDefault(); openSearch(); }
+      else if (e.key === "z" || e.key === "Z") setZen(!root.classList.contains("zen"));
       else if (e.key === "Escape") {
         if (root.classList.contains("nav-open")) closeNav(true);
+        else if (root.classList.contains("zen") && !(search.dialog && search.dialog.open)) setZen(false);
       }
     });
 
+    document.addEventListener("mousemove", (e) => {
+      if (root.classList.contains("zen") && e.clientY < 70) flashZenUi();
+    }, { passive: true });
     window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", () => { activeId = undefined; onScroll(); });
     window.addEventListener("load", () => { activeId = undefined; onScroll(); });
