@@ -1,17 +1,17 @@
-title: Tietorakenteet ja algoritmit
+title: Tietorakenteet ja algoritmit (unofficial)
 subtitle: kevät 2026
 description: Helsingin yliopiston kurssin Tietorakenteet ja algoritmit verkkomateriaali (kevät 2026).
 lang: fi
 baseurl: "/tira-2026"
-url: "https://tira.mooc.fi"
-theme-color: '#e76c97'
+url: "https://neoharju.github.io"
+theme-color: "#e76c97"
 
 # The theme lives in this repository (_layouts, _includes, assets). Setting
 # theme to null stops GitHub Pages from adding its default Primer theme.
 theme: null
 
 # Source repository, used for "Muokkaa GitHubissa" links.
-repository: hy-tira/kevat-2026
+repository: neoharju/tira-2026
 repository_branch: main
 
 markdown: kramdown
@@ -37,8 +37,7 @@ collections:
     nav_subtitle: Viikot 9–16
 
 defaults:
-  -
-    scope:
+  - scope:
       path: ""
     values:
       layout: "default"
