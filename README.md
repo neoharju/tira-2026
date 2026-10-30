@@ -79,6 +79,9 @@ part under `defaults` in `_config.yml`; it selects the interface strings
 `#c-<slug>` from `_includes/icons.html`; for a new chapter, set `glyph:` to
 one of the existing icons (for example `glyph: osa14`).
 
+Parts III–V are planned in `PLAN.md`: topics, tasks, tools and
+infrastructure for weeks 17–40.
+
 Formatting conventions (kramdown, GFM input):
 
 | What | How |

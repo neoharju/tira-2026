@@ -85,3 +85,4 @@ exclude:
   - docker-compose.yml
   - README.md
   - CORRECTIONS.md
+  - PLAN.md
