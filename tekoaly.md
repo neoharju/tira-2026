@@ -33,7 +33,7 @@ def find_number(numbers):
     return xor_sum
 ```
 
-Tämä ratkaisu toimii, koska xor-summassa kaikki parillisen määrän kertoja esiintyvät luvut kumoavat toisena ja jäljelle jää vain parittoman määrän kertoja esiintyvä luku. Tämä on hieno ratkaisu – mutta olisi hyvin yllättävää, että Tiraa suorittava opiskelija päätyisi tällaiseen ratkaisuun itsenäisesti.
+Tämä ratkaisu toimii, koska xor-summassa kaikki parillisen määrän kertoja esiintyvät luvut kumoavat toisensa ja jäljelle jää vain parittoman määrän kertoja esiintyvä luku. Tämä on hieno ratkaisu – mutta olisi hyvin yllättävää, että Tiraa suorittava opiskelija päätyisi tällaiseen ratkaisuun itsenäisesti.
 
 Kurssilla tehtävän ratkaisi yhteensä 163 opiskelijaa, joista 14 opiskelijaa palautti tehtävään xor-ratkaisun. Kurssin vastuuhenkilölle xor-ratkaisun palauttaminen on merkki siitä, että opiskelija teettää kurssin tehtävät suoraan tekoälyllä. Mutta miten nämä opiskelijat menestyivät kurssilla loppujen lopuksi?
 

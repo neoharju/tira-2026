@@ -39,3 +39,12 @@ defaults:
       path: ""
     values:
       layout: "default"
+
+# Files that are part of the repository but not of the website. In Jekyll 3
+# this list replaces the default one, so the defaults are repeated here.
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - node_modules
+  - vendor
+  - CORRECTIONS.md

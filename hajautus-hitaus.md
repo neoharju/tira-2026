@@ -49,19 +49,19 @@ for i in range(n):
     numbers[i] = True
 ```
 
-Koodi luo sanakirjan `numbers` ja lisää siihen alkioita yksi kerrallaan. Kun hajautustaulun koko muistissa muuttuu, koodi tulostaa alkioiden määrän ja hajautustaulun koon. Koodin tulostus on seuraava:
+Koodi luo sanakirjan `numbers` ja lisää siihen alkioita yksi kerrallaan. Kun hajautustaulun koko muistissa muuttuu, koodi tulostaa alkioiden määrän ja hajautustaulun koon. Koodin tulostus (CPython 3.12) on seuraava:
 
 ```
 0 64
-1 232
-6 360
-11 640
-22 1176
-43 2272
-86 4696
-171 9312
-342 18520
-683 36960
+1 224
+6 352
+11 632
+22 1168
+43 2264
+86 4688
+171 9304
+342 18512
+683 36952
 ```
 
 Esimerkiksi hajautustaulun koko kasvaa, kun alkioiden määräksi tulee $$6$$. Tässä tilanteessa hajautustaulun koko on ollut aiemmin $$8$$ ja siitä tulee $$16$$. Koko kasvaa, koska $$6/8$$ ylittää rajan $$2/3$$. Koko kasvaa seuraavan kerran, kun alkioiden määräksi tulee $$11$$. Tällöin kooksi tulee $$32$$, koska $$11/16$$ ylittää rajan $$2/3$$.
@@ -114,11 +114,12 @@ keys = []
 
 key = 1
 for i in range(chain_len):
+    table[key] = True
     keys.append(key)
     key = (5 * key + 1) % N
 
 key = chain_len
-while len(numbers) < n:
+while len(keys) < n:
     index, count = find(table, key)
     if count > threshold:
         table[index] = True
@@ -181,4 +182,4 @@ $ python3
 > exit()
 ```
 
-Tämän vuoksi ei ole mahdollista muodostaa tässä esitetyllä tavalla listaa merkkijonoista, joka aiheuttaisi sanakirjan hidastumisen.
+Tämän vuoksi ei ole mahdollista muodostaa tässä esitetyllä tavalla listaa merkkijonoista, joka aiheuttaisi sanakirjan hidastumisen. Kokonaislukujen hajautusarvoja ei kuitenkaan satunnaisteta, joten tässä esitetty hyökkäys toimii edelleen, jos hyökkääjä pystyy valitsemaan sanakirjaan tallennettavat kokonaislukuavaimet.

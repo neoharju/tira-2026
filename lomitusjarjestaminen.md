@@ -6,15 +6,15 @@ hide: true
 
 # Lomitusjärjestäminen
 
-_Lomistusjärjestäminen_ (_merge sort_) on tehokas järjestämisalgoritmi, jonka aikavaativuus on $$O(n \log n)$$.
+_Lomitusjärjestäminen_ (_merge sort_) on tehokas järjestämisalgoritmi, jonka aikavaativuus on $$O(n \log n)$$.
 
 Algoritmi järjestää listan rekursiivisesti niin, että se järjestää ensin erikseen listan vasemman ja oikean puoliskon. Tämän jälkeen se yhdistää järjestetyn vasemman ja oikean puoliskon kokonaiseksi järjestetyksi listaksi. Koska vasen ja oikea puolisko ovat valmiiksi järjestyksessä, niiden yhdistäminen voidaan toteuttaa tehokkaasti.
 
-Algoritmi hyödyntää rekursiota niin, että se järjestää listan vasemman ja oikean puoliskon kutsumalla itseään. Rekursio päättyy, kun listalla on vain yksi alkio, jolloin listaa ei tarvitse järjestää vaan se on valmiiksi järjestyksessä.
+Algoritmi hyödyntää rekursiota niin, että se järjestää listan vasemman ja oikean puoliskon kutsumalla itseään. Rekursio päättyy, kun listalla on enintään yksi alkio, jolloin listaa ei tarvitse järjestää vaan se on valmiiksi järjestyksessä.
 
 ## Esimerkki
 
-Seuraava kuva näyttää, miten lisäysjärjestäminen järjestää listan $$[5,1,2,9,7,5,4,2]$$.
+Seuraava kuva näyttää, miten lomitusjärjestäminen järjestää listan $$[5,1,2,9,7,5,4,2]$$.
 
 ![](img/lomitusjarjestaminen.png)
 
@@ -26,7 +26,7 @@ Lomitusjärjestäminen voidaan toteuttaa seuraavasti Pythonilla:
 def merge_sort(items):
     n = len(items)
 
-    if n == 1: return
+    if n <= 1: return
 
     left = items[0:n//2]
     right = items[n//2:]
@@ -49,7 +49,7 @@ merge_sort(numbers)
 print(numbers) # [1, 2, 2, 4, 5, 6]
 ```
 
-Funktio `merge_sort` järjestää sille annetun listan lomitusjärjestämisen avulla. Jos listalla on vain yksi alkio, funktio ei tee mitään. Muuten funktio jakaa listan kahteen puoliskoon (`left` ja `right`) ja järjestää ne rekursiivisesti.
+Funktio `merge_sort` järjestää sille annetun listan lomitusjärjestämisen avulla. Jos listalla on enintään yksi alkio, funktio ei tee mitään. Muuten funktio jakaa listan kahteen puoliskoon (`left` ja `right`) ja järjestää ne rekursiivisesti.
 
 Puoliskojen järjestämisen jälkeen funktio rakentaa kokonaisen järjestetyn listan. Tämä on toteutettu niin, että funktio käy listan kohdat läpi vasemmalta oikealle ja valitsee jokaiseen kohtaan mahdollisimman pienen jäljellä olevan alkion listasta `left` tai `right`. Koska puoliskot ovat järjestyksessä, kummankin puoliskon pienin alkio löytyy tehokkaasti joka vaiheessa.
 
@@ -57,7 +57,7 @@ Huomaa, että funktion `merge_sort` tarkoituksena on havainnollistaa, miten lomi
 
 ## Tehokkuus
 
-Lisäysjärjestämisen aikavaativuus $$O(n \log n)$$ johtuu siitä, että algoritmissa on $$O(\log n)$$ rekursiivista tasoa ja jokaisella tasolla listojen yhdistäminen vie aikaa $$O(n)$$. Rekursiivisten tasojen määrä saadaan siitä, että kun $$n$$-kokoinen lista puolitetaan $$\log n$$ kertaa, listalla on vain yksi alkio ja rekursio päättyy.
+Lomitusjärjestämisen aikavaativuus $$O(n \log n)$$ johtuu siitä, että algoritmissa on $$O(\log n)$$ rekursiivista tasoa ja jokaisella tasolla listojen yhdistäminen vie aikaa $$O(n)$$. Rekursiivisten tasojen määrä saadaan siitä, että kun $$n$$-kokoinen lista puolitetaan $$\log n$$ kertaa, listalla on vain yksi alkio ja rekursio päättyy.
 
 Tasot muodostuvat seuraavasti:
 

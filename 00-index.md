@@ -17,7 +17,7 @@ Kurssin luennot järjestetään torstaisin klo 14–16 Kumpulan kampuksella (Exa
 
 Kurssin I-osan luentopäivät: 15.1., 22.1., 29.1., 5.2., 12.2., 19.2., 26.2.
 
-Kurssin II-osan luentopäivät: 12.3., 19.3., 26.3., 9.4, 16.4., 23.4.
+Kurssin II-osan luentopäivät: 12.3., 19.3., 26.3., 9.4., 16.4., 23.4.
 
 Kurssin ohjausta järjestetään [Discordissa](https://study.cs.helsinki.fi/discord/join/tira), jossa voit keskustella kurssin järjestäjien ja muiden opiskelijoiden kanssa.
 

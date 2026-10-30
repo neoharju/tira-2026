@@ -6,7 +6,7 @@ hide: true
     
 # AVL-puu
 
-_AVL-puu_ (_AVL_ tree) on tasapainoinen binäärihakupuu, jonka korkeus on $$O(\log n)$$, kun puussa on $$n$$ solmua. Tämän ansiosta AVL-puuta käyttävässä joukossa operaatioiden aikavaativuus on $$O(\log n)$$.
+_AVL-puu_ (_AVL tree_) on tasapainoinen binäärihakupuu, jonka korkeus on $$O(\log n)$$, kun puussa on $$n$$ solmua. Tämän ansiosta AVL-puuta käyttävässä joukossa operaatioiden aikavaativuus on $$O(\log n)$$.
 
 ## Tasapainoehto
 
@@ -30,7 +30,7 @@ Kun $$h \ge 2$$, voimme arvioida funktion $$f(h)$$ arvoa näin:
 
 $$f(h)=f(h-2)+f(h-1)+1 > 2 f(h-2)$$
 
-Tämän perusteella $$f(h) > 2^{h/2}$$ eli suurin $$h$$, jolle $$f(h) \le n$$, on enintään $$2 \log_2(n)$$. Niinpä puun korkeus $$h$$ on luokkaa $$O(\log n)$$.
+Tämän perusteella $$f(h) \ge 2^{h/2}$$ eli suurin $$h$$, jolle $$f(h) \le n$$, on enintään $$2 \log_2(n)$$. Niinpä puun korkeus $$h$$ on luokkaa $$O(\log n)$$.
 
 ## Korkeudet ja kierrot
 
@@ -84,7 +84,7 @@ Esimerkiksi seuraavassa kuvassa solmu $$y$$ on oikeanpuoleinen lapsi ja solmu $$
 
 ![](img/avl_3.png)
 
-Jos solmut $$y$$ ja $$z$$ ovat eri päin, samat kierrot tehdään käänteisesti.
+Jos taas solmu $$y$$ on vasemmanpuoleinen lapsi ja solmu $$z$$ on oikeanpuoleinen lapsi, samat kierrot tehdään käänteisesti.
 
 Tarkastellaan esimerkkinä seuraavaa puuta:
 
@@ -108,7 +108,7 @@ Näiden kiertojen jälkeen puu on jälleen tasapainoinen.
 
 ### Aikavaativuus
 
-Lisäyksen jälkeen kuljetaan reitti ylös juureen ja tehdään tarvittaessa kiertoja. Koska puun korkeus on $$O(\log n)$$ ja kierrot vievät aikaa $$O(1)$$, lisääminen vie aikaa $$O(\log n)$$. Voidaan osoittaa, että solmun lisääminen rikkoo tasapainoehdon enintään yhdessä solmussa, minkä ansiosta kiertoja täytyy tehdä enintään yhdessä puun kohdassa.
+Lisäyksen jälkeen kuljetaan reitti ylös juureen ja tehdään tarvittaessa kiertoja. Koska puun korkeus on $$O(\log n)$$ ja kierrot vievät aikaa $$O(1)$$, lisääminen vie aikaa $$O(\log n)$$. Lisääminen voi rikkoa tasapainoehdon useassa reitin solmussa, mutta voidaan osoittaa, että kun alimman solmun $$x$$ kohdalla tehdään yllä kuvatut kierrot, alipuun korkeus palautuu samaksi kuin ennen lisäystä. Tämän ansiosta tasapainoehto on taas voimassa kaikissa solmuissa ja kiertoja täytyy tehdä enintään yhdessä puun kohdassa.
 
 ## Alkion poistaminen
 

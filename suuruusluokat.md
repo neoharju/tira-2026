@@ -8,9 +8,9 @@ hide: true
 
 Algoritmiikassa usein esiintyviä merkintöjä ovat:
 
-* _Yläraja_: Funktio $$g(n)$$ on luokkaa $$O(f(n))$$ eli $$g(n)=O(f(n))$$, jos on olemassa vakiot $$c$$ ja $$n_0$$ niin, että $$g(n) \le c f(n)$$ aina kun $$n \ge n_0$$.
+* _Yläraja_: Funktio $$g(n)$$ on luokkaa $$O(f(n))$$ eli $$g(n)=O(f(n))$$, jos on olemassa positiiviset vakiot $$c$$ ja $$n_0$$ niin, että $$g(n) \le c f(n)$$ aina kun $$n \ge n_0$$.
 
-* _Alaraja_: Funktio $$g(n)$$ on luokkaa $$\Omega(f(n))$$  eli $$g(n)=\Omega(f(n))$$, jos on olemassa vakiot $$c$$ ja $$n_0$$ niin, että $$g(n) \ge c f(n)$$ aina kun $$n \ge n_0$$.
+* _Alaraja_: Funktio $$g(n)$$ on luokkaa $$\Omega(f(n))$$  eli $$g(n)=\Omega(f(n))$$, jos on olemassa positiiviset vakiot $$c$$ ja $$n_0$$ niin, että $$g(n) \ge c f(n)$$ aina kun $$n \ge n_0$$.
 
 * _Tarkka arvio_: Funktio $$g(n)$$ on luokkaa $$\Theta(f(n))$$ eli $$g(n)=\Theta(f(n))$$, jos se on sekä luokkaa $$O(f(n))$$ että luokkaa $$\Omega(f(n))$$.
 
@@ -37,7 +37,7 @@ Tarkastellaan seuraavaa algoritmia:
 {% highlight python linenos %}
 def count_even(numbers):
     result = 0
-    for x in values:
+    for x in numbers:
         if x % 2 == 0:
             result += 1
     return result
@@ -45,13 +45,13 @@ def count_even(numbers):
 
 Algoritmi suorittaa kerran rivit 2 ja 6 ja $$n$$ kertaa rivit 3 ja 4. Rivin 5 algoritmi suorittaa vähintään $$0$$ kertaa ja enintään $$n$$ kertaa. Niinpä algoritmi suorittaa vähintään $$2n+2$$ askelta ja enintään $$3n+2$$ askelta.
 
-Algoritmin aikavaativuus on  $$O(n)$$, koska voidaan arvioida $$3n+2 \le 4n$$, kun $$n \ge 2$$. Toisaalta algoritmin aikavaativuus on $$\Omega(n)$$, koska voidaan arvioida $$2n+2 \ge 2n$$, kun $$n \ge 1$$. Niinpä algoritmin aikavaativuus on myös $$\Theta(n)$$.
+Algoritmin aikavaativuus on $$O(n)$$, koska voidaan arvioida $$3n+2 \le 4n$$, kun $$n \ge 2$$. Toisaalta algoritmin aikavaativuus on $$\Omega(n)$$, koska voidaan arvioida $$2n+2 \ge 2n$$, kun $$n \ge 1$$. Niinpä algoritmin aikavaativuus on myös $$\Theta(n)$$.
 
 Tarkastellaan vielä seuraavaa algoritmia:
 
 {% highlight python linenos %}
 def has_even(numbers):
-    for x in values:
+    for x in numbers:
         if x % 2 == 0:
             return True
     return False
@@ -59,7 +59,7 @@ def has_even(numbers):
 
 Tämä algoritmi päättyy heti, kun rivin 3 ehto toteutuu. Algoritmi suorittaa vähintään $$3$$ askelta ja enintään $$2n+1$$ askelta.
 
-Algoritmin aikavaativuus $$O(n)$$ ja toisaalta $$\Omega(1)$$.  Aikavaativuutta ei voida kuvata $$\Theta$$-merkinnällä, koska askelten määrälle ei saada samaa ylärajaa ja alarajaa.
+Algoritmin aikavaativuus on $$O(n)$$ ja toisaalta $$\Omega(1)$$. Aikavaativuutta ei voida kuvata $$\Theta$$-merkinnällä, koska askelten määrälle ei saada samaa ylärajaa ja alarajaa. Jos kuitenkin tarkastellaan vain pahinta tapausta, jossa algoritmi suorittaa $$2n+1$$ askelta, pahimman tapauksen aikavaativuus on $$\Theta(n)$$.
 
 ## O-merkinnän käyttäminen
 

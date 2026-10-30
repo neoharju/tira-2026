@@ -10,7 +10,7 @@ Seuraava mallitentti antaa näytteen siitä, millainen on kurssin I-osan tentti.
 
 Tentti muodostuu viidestä tehtävästä, jotka ovat samantapaisia kuin mallitentissä. Kurssin suoritus vaatii, että ratkaiset ainakin kolme ensimmäistä tehtävää. Kaksi viimeistä tehtävää liittyy arvosanoihin 4 ja 5.
 
-Ohjelmointitehtävissä koodi tulee toteuttaa Python-kielellä. Oleellista on, että koodin logiikka ja kokonaisuus ovat kunnossa. Erityisesti pieneet virheet (esim. jostain puuttuu sulku) eivät haittaa.
+Ohjelmointitehtävissä koodi tulee toteuttaa Python-kielellä. Oleellista on, että koodin logiikka ja kokonaisuus ovat kunnossa. Erityisesti pienet virheet (esim. jostain puuttuu sulku) eivät haittaa.
 
 ## Tehtävä 1
 
@@ -48,7 +48,7 @@ Esimerkiksi jos lista on `[1, 2, 1, 2, 1]`, haluttu tulos on 9, koska mahdollise
 **Malliratkaisu**
 
 ```python
-def count_pairs(numbers):
+def count_lists(numbers):
     counts = {}
     result = 0
     for number in numbers:
@@ -71,9 +71,9 @@ Toteuta rekursiivinen funktio `count_leaves(node)`, joka laskee, montako lehteä
 
 ```python
 class Node:
-    def __init__(self, value, children=[]):
+    def __init__(self, value, children=None):
         self.value = value
-        self.children = children
+        self.children = children if children is not None else []
 
     def __repr__(self):
         return str(self.value)

@@ -27,6 +27,6 @@ Linkitetyn listan etuna on, että alkioita voi lisätä ja poistaa joustavasti, 
 100 | 101 | 102 | 103 | 104 | 105 | 106 | 107 | 108 | 109 | 110 | 111
 1 | 109 | 106 | 3 | 106 | 0 | 2 | 100 | 103 | 4 | 0 | 100
 
-Tämä vastaa listaa $$[4,1,3,2]$$, jonka aloituskohta muistissa on 109.
+Tämä vastaa listaa $$[4,1,2,3]$$, jonka aloituskohta muistissa on 109.
 
 Linkitetyn listan heikkoutena on, että ei ole tehokasta tapaa laskea, missä kohdassa muistia mikäkin alkio sijaitsee. Jos halutaan päästä käsiksi tietyssä kohdassa olevaan alkioon, täytyy seurata viittauksia listan alusta tai lopusta. Tämän vuoksi indeksointi vie aikaa $$O(n)$$, jos alkio sijaitsee listan keskellä.

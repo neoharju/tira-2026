@@ -40,7 +40,7 @@ Seuraava kuva näyttää, miten pienin alkio $$1$$ voidaan poistaa keosta. Sen t
 
 ![](img/keko_2.png)
 
-Alkion lisääminen vie aikaa $$O(\log n)$$, koska alkio laskeutuu jonkin määrän tasoja alaspäin keossa ja keon tasojen määrä on $$O(\log n)$$.
+Alkion poistaminen vie aikaa $$O(\log n)$$, koska alkio laskeutuu jonkin määrän tasoja alaspäin keossa ja keon tasojen määrä on $$O(\log n)$$.
 
 ## Keon käsittely listana
 

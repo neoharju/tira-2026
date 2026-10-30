@@ -16,9 +16,9 @@ Kun alkio $$x$$ lisätään hajautustauluun, se lisätään kohtaan $$h(x) \bmod
 
 ## Esimerkki
 
-Tarkastellaan esimerkkiä, jossa $$N=10$$ ja $$h(x)=7x$$. Tallennetaan hajautustauluun joukon $$\{2,4,5,9,18,30\}$$ sisältö. Alkioille saadaan seuraavat hajautusarvot:
+Tarkastellaan esimerkkiä, jossa $$N=10$$ ja $$h(x)=7x$$. Tallennetaan hajautustauluun joukon $$\{2,4,5,9,18,30\}$$ sisältö. Alkioille saadaan seuraavat sijainnit hajautustaulussa:
 
-Alkio | Hajautusarvo
+Alkio | Sijainti
 -- | --
 $$2$$ | $$7 \cdot 2 \bmod 10 = 4$$
 $$4$$ | $$7 \cdot 4 \bmod 10 = 8$$

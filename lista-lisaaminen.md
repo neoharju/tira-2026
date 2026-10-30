@@ -10,7 +10,7 @@ Kun listan loppuun lisätään alkio, aikaa kuluu $$O(1)$$ tai $$O(n)$$ riippuen
 
 Vaikka alkion lisääminen vie välillä aikaa $$O(n)$$, voidaan osoittaa, että aikaa kuluu _keskimäärin_ vain $$O(1)$$, jos uuden muistialueen varaaminen toteutetaan sopivalla tavalla. Yksi mahdollinen tapa on _kaksinkertaistaa_ muistialueen koko aina, kun muistia varataan lisää.
 
-Tarkastellaan tilannetta, jossa listalle on lisätty yhteensä $$n$$ alkiota ja listalle on juuri varattu uusi muistialue. Tässä tilanteessa $$n$$ alkiota on siirretty kerran, $$n/2$$ alkiota on siirretty kahdesti, $$n/4$$ alkiota on siirretty kolmesti jne., joten yhteensä siirrettyjen alkioiden määrä on
+Tarkastellaan tilannetta, jossa listalle on lisätty yhteensä $$n$$ alkiota ja listalle on juuri varattu uusi muistialue. Tässä tilanteessa $$n$$ alkiota on siirretty ainakin kerran, $$n/2$$ alkiota on siirretty ainakin kahdesti, $$n/4$$ alkiota on siirretty ainakin kolmesti jne., joten yhteensä siirrettyjen alkioiden määrä on
 
 $$n+n/2+n/4+n/8+\dots = O(n).$$
 
@@ -44,7 +44,7 @@ for i in range(n):
     numbers.append(1)
 ```
 
-Koodissa käyttää funktiota `sys.getsizeof`, joka kertoo sille annetun olion muistinkäytön tavuina. Koodi aloittaa tyhjästä listasta ja lisää listalle alkion kerrallaan. Aina kun muistinkäyttö muuttuu edellisestä arvosta, koodi tulostaa listan koon ja sen muistinkäytön.
+Koodi käyttää funktiota `sys.getsizeof`, joka kertoo sille annetun olion muistinkäytön tavuina. Koodi aloittaa tyhjästä listasta ja lisää listalle alkion kerrallaan. Aina kun muistinkäyttö muuttuu edellisestä arvosta, koodi tulostaa listan koon ja sen muistinkäytön.
 
 Koodin tulostus testikoneella (CPython 3.10.6) on seuraava:
 
