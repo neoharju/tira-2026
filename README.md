@@ -1,7 +1,12 @@
-# Tietorakenteet ja algoritmit, kevät 2026
+# Tietorakenteet ja algoritmit, kevät 2026 (unofficial)
 
 Course material for the University of Helsinki course *Tietorakenteet ja
-algoritmit* (spring 2026), published at <https://tira.mooc.fi/kevat-2026/>.
+algoritmit* (spring 2026), published at <https://tira.mooc.fi/kevat-2026/> and 
+created by Antti Laaksonen <https://github.com/pllk>.
+
+This is a private fork, modified with permission from Antti Laaksonen is not intended for
+commercial use.
+
 The site is built with Jekyll through the `github-pages` gem, so it builds the
 same way on GitHub Pages and locally. It has no custom plugins and loads
 nothing from third-party servers (fonts, KaTeX and all scripts are in
