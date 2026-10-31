@@ -4,7 +4,7 @@ description: Helsingin yliopiston kurssin Tietorakenteet ja algoritmit verkkomat
 lang: fi
 baseurl: "/tira-2026"
 url: "https://neoharju.github.io"
-theme-color: "#e76c97"
+theme-color: "#2563eb"
 
 # The theme lives in this repository (_layouts, _includes, assets). Setting
 # theme to null stops GitHub Pages from adding its default Primer theme.

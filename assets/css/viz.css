@@ -3,27 +3,31 @@
 .viz {
   --vz-bg: var(--bg-elev);
   --vz-grid: var(--border-soft);
+  /* Roles: blue for the current element, violet for finished ones, green and
+     red for right and wrong. c0-c5 are the categorical colours of the
+     intro-to-ai figures (orange, violet, aqua, yellow, red, blue). */
   --vz-node: #ffffff;
-  --vz-node-stroke: #b9bfcf;
-  --vz-node-text: #1b1f33;
-  --vz-edge: #b4bacb;
-  --vz-edge-text: #4a5068;
-  --vz-cur: #e0457b;
-  --vz-cur-soft: rgba(224, 69, 123, .14);
-  --vz-act: #e0457b;
-  --vz-done: #6a4cf0;
-  --vz-done-soft: rgba(106, 76, 240, .12);
-  --vz-ok: #16a34a;
-  --vz-ok-soft: rgba(22, 163, 74, .13);
+  --vz-node-stroke: #cbd5e1;
+  --vz-node-text: #0f172a;
+  --vz-edge: #b4bfcf;
+  --vz-edge-text: #475569;
+  --vz-on: #ffffff; /* labels on solid fills */
+  --vz-cur: #2563eb;
+  --vz-cur-soft: rgba(37, 99, 235, .14);
+  --vz-act: #2563eb;
+  --vz-done: #6d28d9;
+  --vz-done-soft: rgba(109, 40, 217, .1);
+  --vz-ok: #15803d;
+  --vz-ok-soft: rgba(21, 128, 61, .12);
   --vz-bad: #dc2626;
   --vz-bad-soft: rgba(220, 38, 38, .12);
-  --vz-warn: #d97706;
-  --vz-c0: #e0457b;
-  --vz-c1: #6a4cf0;
-  --vz-c2: #0891b2;
-  --vz-c3: #d97706;
-  --vz-c4: #16a34a;
-  --vz-c5: #2563eb;
+  --vz-warn: #b45309;
+  --vz-c0: #eb6834;
+  --vz-c1: #6250d6;
+  --vz-c2: #1baf7a;
+  --vz-c3: #eda100;
+  --vz-c4: #e34948;
+  --vz-c5: #2a78d6;
   --vz-mono: var(--font-mono);
   /* Opaque tints for node fills, so that edges under a node never show through it. */
   --vz-cur-fill: color-mix(in srgb, var(--vz-cur) 14%, var(--vz-node));
@@ -46,27 +50,28 @@ html.dark .viz {
   --vz-done-fill: color-mix(in srgb, var(--vz-done) 16%, var(--vz-node));
   --vz-ok-fill: color-mix(in srgb, var(--vz-ok) 15%, var(--vz-node));
   --vz-bad-fill: color-mix(in srgb, var(--vz-bad) 15%, var(--vz-node));
-  --vz-node: #171a26;
-  --vz-node-stroke: #4a5170;
-  --vz-node-text: #e9ebf4;
-  --vz-edge: #475070;
-  --vz-edge-text: #b5bbd0;
-  --vz-cur: #ff5c95;
-  --vz-cur-soft: rgba(255, 92, 149, .18);
-  --vz-act: #ff6a9d;
-  --vz-done: #9c8bff;
-  --vz-done-soft: rgba(156, 139, 255, .16);
-  --vz-ok: #34d399;
-  --vz-ok-soft: rgba(52, 211, 153, .15);
+  --vz-node: #1a2438;
+  --vz-node-stroke: #475569;
+  --vz-node-text: #f1f5f9;
+  --vz-edge: #4b5a78;
+  --vz-edge-text: #cbd5e1;
+  --vz-on: #0b1220; /* the dark theme's accents are light: dark labels on them */
+  --vz-cur: #60a5fa;
+  --vz-cur-soft: rgba(96, 165, 250, .18);
+  --vz-act: #60a5fa;
+  --vz-done: #a78bfa;
+  --vz-done-soft: rgba(167, 139, 250, .16);
+  --vz-ok: #4ade80;
+  --vz-ok-soft: rgba(74, 222, 128, .15);
   --vz-bad: #f87171;
   --vz-bad-soft: rgba(248, 113, 113, .15);
   --vz-warn: #fbbf24;
-  --vz-c0: #ff6a9d;
-  --vz-c1: #9c8bff;
-  --vz-c2: #22d3ee;
-  --vz-c3: #fbbf24;
-  --vz-c4: #34d399;
-  --vz-c5: #60a5fa;
+  --vz-c0: #f2814f;
+  --vz-c1: #9b8cf2;
+  --vz-c2: #34c38f;
+  --vz-c3: #f2b632;
+  --vz-c4: #f06a69;
+  --vz-c5: #5b9cf0;
 }
 .viz::before {
   content: "";
@@ -94,8 +99,8 @@ html.dark .viz {
   gap: .35rem;
   padding: .16rem .55rem;
   border-radius: 999px;
-  background: var(--violet-soft);
-  color: var(--violet-ink);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
   font-size: .68rem;
   font-weight: 700;
   letter-spacing: .08em;
@@ -205,10 +210,10 @@ html.dark .viz-stage { background-color: #0e1018; }
   border: 0;
   border-radius: 50%;
   background: var(--grad-btn);
-  color: #fff;
-  box-shadow: 0 8px 20px -8px rgba(154, 63, 216, .7);
+  color: var(--on-accent);
+  box-shadow: 0 8px 20px -8px color-mix(in srgb, var(--accent) 70%, transparent);
 }
-.viz-btn.is-play:hover { color: #fff; background: var(--grad-btn); filter: brightness(1.08); }
+.viz-btn.is-play:hover { color: var(--on-accent); background: var(--grad-btn); filter: brightness(1.08); }
 .viz-btn.is-play .icon { width: 18px; height: 18px; }
 .viz-btn.is-text { width: auto; padding: 0 .7rem; font-size: .78rem; font-weight: 650; font-variant-numeric: tabular-nums; }
 
@@ -265,8 +270,8 @@ html.dark .viz-stage { background-color: #0e1018; }
 .viz-input:focus { outline: 2px solid var(--focus); outline-offset: 1px; }
 .viz-tools .viz-label { color: var(--fg-mute); font-size: .8rem; font-weight: 600; }
 .viz-tools .viz-sep { width: 1px; height: 22px; background: var(--border); margin: 0 .2rem; }
-.viz-btn.is-primary { border-color: transparent; background: var(--grad-btn); color: #fff; }
-.viz-btn.is-primary:hover { color: #fff; filter: brightness(1.08); background: var(--grad-btn); }
+.viz-btn.is-primary { border-color: transparent; background: var(--grad-btn); color: var(--on-accent); }
+.viz-btn.is-primary:hover { color: var(--on-accent); filter: brightness(1.08); background: var(--grad-btn); }
 
 /* Panels */
 .viz-panel {
@@ -331,7 +336,7 @@ html.dark .viz-stage { background-color: #0e1018; }
 .viz-out .o-line { display: block; white-space: pre; opacity: .78; }
 .viz-out .o-line.is-new { opacity: 1; color: #fff; animation: vz-flash .9s ease; }
 .viz-out .o-empty { color: #6f758c; font-style: italic; }
-@keyframes vz-flash { from { background: rgba(255, 92, 149, .28); } to { background: transparent; } }
+@keyframes vz-flash { from { background: rgba(96, 165, 250, .28); } to { background: transparent; } }
 
 .viz-vars { display: flex; flex-wrap: wrap; gap: .4rem; padding: .55rem .65rem; }
 .viz-var {
@@ -381,20 +386,20 @@ html.dark .viz-stage { background-color: #0e1018; }
 }
 .vz-sub.is-hl { fill: var(--vz-cur); }
 .vz-badge circle { fill: var(--vz-done); stroke: var(--vz-bg); stroke-width: 2; transition: fill .3s; }
-.vz-badge text { fill: #fff; font: 700 10px var(--vz-mono); text-anchor: middle; dominant-baseline: central; }
+.vz-badge text { fill: var(--vz-on); font: 700 10px var(--vz-mono); text-anchor: middle; dominant-baseline: central; }
 .vz-badge.is-cur circle { fill: var(--vz-cur); }
 .vz-badge.is-ok circle { fill: var(--vz-ok); }
 
 /* node states */
 .vz-node.cur .vz-shape { fill: var(--vz-cur); stroke: var(--vz-cur); stroke-width: 2.4; filter: drop-shadow(0 0 7px var(--vz-cur-soft)); }
-.vz-node.cur .vz-label { fill: #fff; }
+.vz-node.cur .vz-label { fill: var(--vz-on); }
 .vz-node.act .vz-shape { fill: var(--vz-cur-fill); stroke: var(--vz-act); stroke-width: 2.4; }
 .vz-node.done .vz-shape { fill: var(--vz-done-fill); stroke: var(--vz-done); stroke-width: 2.2; }
 .vz-node.solid .vz-shape { fill: var(--vz-done); stroke: var(--vz-done); }
-.vz-node.solid .vz-label { fill: #fff; }
+.vz-node.solid .vz-label { fill: var(--vz-on); }
 .vz-node.ok .vz-shape { fill: var(--vz-ok-fill); stroke: var(--vz-ok); stroke-width: 2.4; }
 .vz-node.okf .vz-shape { fill: var(--vz-ok); stroke: var(--vz-ok); }
-.vz-node.okf .vz-label { fill: #fff; }
+.vz-node.okf .vz-label { fill: var(--vz-on); }
 .vz-node.bad .vz-shape { fill: var(--vz-bad-fill); stroke: var(--vz-bad); stroke-width: 2.4; }
 .vz-node.hl .vz-shape { stroke: var(--vz-done); stroke-width: 3; }
 .vz-node.ring .vz-shape { stroke-width: 3.2; stroke: var(--vz-done); }
@@ -535,7 +540,7 @@ html.dark .vz-node.wall .vz-shape { fill: #2c3146; stroke: #2c3146; }
 .vz-matrix:not(.vz-edgelist) th { font-size: .78rem; }
 .vz-matrix td { color: var(--fg); font-weight: 600; transition: background .3s, color .3s; }
 .vz-matrix td.is-k { background: var(--vz-done-soft); }
-.vz-matrix td.is-hl { background: var(--vz-cur); color: #fff; border-radius: 6px; animation: vz-flash .9s ease; }
+.vz-matrix td.is-hl { background: var(--vz-cur); color: var(--vz-on); border-radius: 6px; animation: vz-flash .9s ease; }
 .vz-edgelist td, .vz-edgelist th { text-align: left; padding-left: .7rem; }
 .vz-edgelist tr.is-hl td { background: var(--vz-cur-soft); }
 .vz-edgelist td.is-ok { color: var(--vz-ok); }

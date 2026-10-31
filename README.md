@@ -126,7 +126,9 @@ variable panels.
 
 ## Reading features
 
-* Light and dark theme (follows the system setting until chosen).
+* Light and dark theme (follows the system setting until chosen), with the
+  colours of the [intro-to-ai](https://github.com/neoharju/intro-to-ai) site:
+  slate greys and one blue accent.
 * Zen mode (`Z` or the lotus button): hides the navigation and shows the text
   on a calm background. `Esc` exits.
 * Search: `/` or `Ctrl K` / `⌘ K`.

@@ -184,7 +184,7 @@ for (; i < n; ++i)  // the last n % 8 values, one at a time
   /* =========================================== array of structs vs SoA */
   register("aos-soa", (fig) => {
     const CH = ["r", "g", "b", "a"];
-    const COL = { r: "c0", g: "c4", b: "c5", a: "c3" };
+    const COL = { r: "c4", g: "c2", b: "c5", a: "c3" };  // red, aqua, blue, yellow
     tabbed(fig, {
       title: "Loading pixels into an AVX2 register (32 bytes)",
       kicker: "Animation",
