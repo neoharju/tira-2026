@@ -560,3 +560,98 @@ html.dark .vz-node.wall .vz-shape { fill: #2c3146; stroke: #2c3146; }
   .vz-text { font-size: 15px; }
   .vz-text.big, .vz-text.label-x { font-size: 18px; }
 }
+
+/* ============ Part III, chapters 19–20 (viz-speedups.js): road maps, SIMD lanes,
+   min-plus tables ============ */
+
+.viz-stage.is-plain { background-image: none; padding: .55rem; }
+
+/* toggle buttons in the tool bar */
+.viz-tools .viz-btn[aria-pressed="true"] { border-color: transparent; background: var(--vz-cur-soft); color: var(--vz-cur); box-shadow: inset 0 0 0 1px var(--vz-cur); }
+
+/* ---------- road maps ---------- */
+.rr-grid { display: grid; gap: .55rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@container viz (max-width: 560px) {
+  .rr-grid { grid-template-columns: minmax(0, 1fr); }
+}
+.rr-panel { min-width: 0; border: 1px solid var(--border); border-radius: 11px; background: var(--bg-elev); overflow: hidden; transition: border-color .3s, box-shadow .3s; }
+.rr-panel.is-done { border-color: color-mix(in srgb, var(--vz-ok) 55%, var(--border)); }
+.rr-head { display: flex; justify-content: space-between; gap: .6rem; padding: .32rem .65rem; border-bottom: 1px solid var(--border-soft); background: var(--bg-soft); font-size: .76rem; }
+.rr-name { color: var(--fg); font-weight: 650; }
+.rr-count { color: var(--fg-mute); font: 600 .76rem var(--vz-mono); font-variant-numeric: tabular-nums; }
+.rr-panel.is-done .rr-count { color: var(--vz-ok); }
+.rr-svg { display: block; width: 100%; height: auto; cursor: crosshair; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+.rr-road { fill: none; stroke: var(--vz-edge); stroke-width: 1.3; stroke-linecap: round; opacity: .75; }
+.rr-hwy { fill: none; stroke: var(--vz-warn); stroke-width: 3.2; stroke-linecap: round; opacity: .55; }
+.rr-n { fill: var(--vz-node-stroke); transition: fill .25s; }
+.rr-n.is-f { fill: var(--vz-c5); r: 3.2px; }  /* forward search: blue */
+.rr-n.is-b { fill: var(--vz-c0); r: 3.2px; }  /* backward search: orange */
+.rr-n.q0 { fill: var(--vz-node-stroke); }
+.rr-n.q1 { fill: color-mix(in srgb, var(--vz-c1) 25%, var(--vz-node-stroke)); }
+.rr-n.q2 { fill: color-mix(in srgb, var(--vz-c1) 45%, var(--vz-node-stroke)); }
+.rr-n.q3 { fill: color-mix(in srgb, var(--vz-c1) 65%, var(--vz-node-stroke)); }
+.rr-n.q4 { fill: color-mix(in srgb, var(--vz-c1) 82%, var(--vz-node-stroke)); }
+.rr-n.q5 { fill: var(--vz-c1); }
+.rr-path { fill: none; stroke: var(--vz-c4); stroke-width: 3.4; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 3px color-mix(in srgb, var(--vz-c4) 30%, transparent)); }
+.rr-st { stroke: var(--vz-bg); stroke-width: 2; }
+.rr-st.src { fill: var(--vz-ok); }
+.rr-st.dst { fill: var(--vz-c4); }
+.rr-st-label { fill: var(--vz-on); font: 700 9.5px var(--font-sans); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.rr-lm { fill: var(--vz-c0); stroke: var(--vz-bg); stroke-width: 1.6; }
+.rr-lm.is-new { animation: rr-pulse 1s ease 2; transform-box: fill-box; transform-origin: center; }
+@keyframes rr-pulse { 40% { transform: scale(1.7); } }
+.rr-lm-label { fill: var(--vz-c0); font: 700 9px var(--font-sans); text-anchor: middle; paint-order: stroke; stroke: var(--vz-bg); stroke-width: 3px; pointer-events: none; }
+.rr-legend { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .75rem; padding: .4rem .65rem .5rem; border-top: 1px solid var(--border-soft); color: var(--fg-mute); font-size: .74rem; }
+.rr-key { display: inline-flex; align-items: center; gap: .3rem; font-family: var(--vz-mono); }
+.rr-key i { width: 10px; height: 10px; border-radius: 50%; }
+.rr-key i.q0 { background: var(--vz-node-stroke); }
+.rr-key i.q1 { background: color-mix(in srgb, var(--vz-c1) 25%, var(--vz-node-stroke)); }
+.rr-key i.q2 { background: color-mix(in srgb, var(--vz-c1) 45%, var(--vz-node-stroke)); }
+.rr-key i.q3 { background: color-mix(in srgb, var(--vz-c1) 65%, var(--vz-node-stroke)); }
+.rr-key i.q4 { background: color-mix(in srgb, var(--vz-c1) 82%, var(--vz-node-stroke)); }
+.rr-key i.q5 { background: var(--vz-c1); }
+
+/* ---------- small graphs ---------- */
+/* The two searches of a bidirectional or CH query: forward c5 (blue), backward c0 (orange). */
+.vz-edge.c4 .vz-line { stroke: var(--vz-c4); stroke-width: 2.6; } .vz-edge.c4 .vz-head { fill: var(--vz-c4); }
+.vz-edge.c5 .vz-line { stroke: var(--vz-c5); stroke-width: 2.6; } .vz-edge.c5 .vz-head { fill: var(--vz-c5); }
+.vz-edge.hw .vz-line { stroke: var(--vz-warn); stroke-width: 5; opacity: .7; }
+.vz-edge.sc .vz-line { stroke-dasharray: 7 5; }
+.vz-edge.up .vz-line { stroke-dasharray: 2 4; opacity: .55; }
+.vz-edge.is-new .vz-line { animation: rr-draw .9s ease; }
+@keyframes rr-draw { from { stroke-dashoffset: 60; opacity: 0; } }
+
+/* ---------- SIMD lanes ---------- */
+.ln-grid { display: grid; gap: 3px; overflow-x: auto; font: .78rem/1.3 var(--vz-mono); font-variant-numeric: tabular-nums; }
+.ln-row { display: grid; grid-template-columns: 6.6rem repeat(8, minmax(2.6rem, 1fr)) minmax(9rem, 1.6fr); gap: 3px; align-items: center; }
+.ln-name { color: var(--fg-mute); font-weight: 650; white-space: nowrap; }
+.ln-cell { padding: .3rem .2rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-elev); color: var(--fg); font-weight: 600; text-align: center; transition: background .3s, border-color .3s; }
+.ln-row.is-head .ln-cell { border: 0; background: none; color: var(--fg-faint); font-size: .7rem; }
+.ln-row.is-const .ln-cell { background: var(--bg-soft); }
+.ln-row.is-hl .ln-cell { border-color: var(--vz-cur); background: var(--vz-cur-soft); animation: vz-flash .9s ease; }
+.ln-cell.is-neg { color: var(--vz-bad); }
+.ln-cell.is-dup { opacity: .35; }
+.ln-note { padding-left: .35rem; color: var(--fg-mute); font-family: var(--font-sans); font-size: .74rem; white-space: nowrap; }
+@container viz (max-width: 700px) {
+  .ln-row { grid-template-columns: 5.4rem repeat(8, minmax(2.4rem, 1fr)); }
+  .ln-note { display: none; }
+}
+@container viz (max-width: 480px) {
+  .ln-grid { font-size: .68rem; }
+  .ln-row { grid-template-columns: 3.7rem repeat(8, minmax(1.95rem, 1fr)); gap: 2px; }
+  .ln-cell { padding: .28rem 0; border-radius: 5px; }
+}
+
+/* ---------- min-plus tables ---------- */
+.mp-wrap { display: grid; gap: .6rem; overflow-x: auto; }
+.mp-table { width: 100%; border-collapse: separate; border-spacing: 2px; font: .76rem/1.25 var(--vz-mono); font-variant-numeric: tabular-nums; }
+.mp-table caption { padding: 0 0 .25rem; color: var(--fg-mute); font: 650 .72rem var(--font-sans); letter-spacing: .02em; text-align: left; }
+.mp-table th { padding: .2rem .3rem; color: var(--fg-faint); font-weight: 600; font-size: .7rem; text-align: center; white-space: nowrap; }
+.mp-table td { padding: .26rem .2rem; border-radius: 5px; background: var(--bg-elev); color: var(--fg); font-weight: 600; text-align: center; box-shadow: inset 0 0 0 1px var(--border); transition: background .3s; }
+.mp-table td.is-inf { color: var(--fg-faint); }
+.mp-table tr.is-hl td { background: var(--vz-done-soft); box-shadow: inset 0 0 0 1px var(--vz-done); }
+.mp-table tr.is-hl td.is-new { background: var(--vz-cur); color: var(--vz-on); animation: vz-flash .9s ease; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rr-lm.is-new, .vz-edge.is-new .vz-line, .ln-row.is-hl .ln-cell, .mp-table tr.is-hl td.is-new { animation: none !important; }
+}

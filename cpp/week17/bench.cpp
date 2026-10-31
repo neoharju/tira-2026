@@ -1,6 +1,6 @@
 // Speed goals for week 17. Run in the release build: ./w17_bench [task]
-// The goals were calibrated on a 4-core machine; with more cores the parallel
-// tasks become easier.
+// The goals were calibrated with GCC 16 on a 4-core machine; with more cores
+// the parallel tasks become easier.
 #include <omp.h>
 
 #include "tasks.hpp"

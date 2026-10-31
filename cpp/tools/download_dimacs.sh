@@ -1,7 +1,8 @@
 #!/bin/sh
 # Downloads the New York road network of the 9th DIMACS Implementation
 # Challenge (264,346 nodes, 733,846 arcs; derived from US Census TIGER/Line
-# data, public domain) into data/. The week 18 benchmarks use it if it exists.
+# data, public domain) into data/. The week 18 and 19 benchmarks use it if it
+# exists.
 set -eu
 cd "$(dirname "$0")/.."
 mkdir -p data
