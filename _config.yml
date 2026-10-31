@@ -53,26 +53,32 @@ collections:
     nav_title: Part V
     nav_subtitle: Weeks 33–40
 
+# `viz` lists the figure scripts (assets/js/viz-<name>.js) that a page with
+# figures loads. Parts III–V have their own, with English captions.
 defaults:
   - scope:
       path: ""
     values:
       layout: "default"
+      viz: [graphs, trees, arrays]
   - scope:
       path: ""
       type: material_3
     values:
       lang: en
+      viz: [hardware, paths]
   - scope:
       path: ""
       type: material_4
     values:
       lang: en
+      viz: []
   - scope:
       path: ""
       type: material_5
     values:
       lang: en
+      viz: []
 
 # Files that are part of the repository but not of the website. In Jekyll 3
 # this list replaces the default one, so the defaults are repeated here.

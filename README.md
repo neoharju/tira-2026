@@ -110,6 +110,12 @@ Figures are included with
 * `alt` is required: it is the text alternative of the figure.
 * `fallback` is an image shown when JavaScript is disabled.
 
+A page with figures loads `assets/js/viz-core.js` and the figure scripts named
+in its `viz` front matter, which `_config.yml` sets for each part: `graphs`,
+`trees` and `arrays` for Parts I–II, `hardware` and `paths` (English captions)
+for Part III. Code panels highlight Python, or C++ when the panel's title is
+`c++`.
+
 The figures replay the course's own code (same edge order, same loops), so the
 states they show match the outputs printed in the material. When an example in
 the text changes, update the matching figure as well.

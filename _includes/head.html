@@ -33,7 +33,7 @@
 {%- if has_viz %}
 <link rel="stylesheet" href="{{ '/assets/css/viz.css' | relative_url }}?v={{ v }}">
 <script defer src="{{ '/assets/js/viz-core.js' | relative_url }}?v={{ v }}"></script>
-<script defer src="{{ '/assets/js/viz-graphs.js' | relative_url }}?v={{ v }}"></script>
-<script defer src="{{ '/assets/js/viz-trees.js' | relative_url }}?v={{ v }}"></script>
-<script defer src="{{ '/assets/js/viz-arrays.js' | relative_url }}?v={{ v }}"></script>
+{%- for module in page.viz %}
+<script defer src="{{ '/assets/js/viz-' | append: module | append: '.js' | relative_url }}?v={{ v }}"></script>
+{%- endfor %}
 {%- endif %}

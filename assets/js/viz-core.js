@@ -522,12 +522,49 @@
     return out;
   }
 
+  // C++ for the figures of Parts III–V: keywords, types, intrinsics (_mm…) and
+  // the OpenMP pragma lines.
+  const CPP_KW = /^(for|if|else|while|return|auto|const|constexpr|static|struct|class|using|namespace|template|typename|void|bool|int|unsigned|long|char|float|double|break|continue|true|false|nullptr|sizeof)\b/;
+  function highlightCpp(line) {
+    let out = "";
+    let rest = line;
+    const rules = [
+      [/^\/\/.*/, "t-c"],
+      [/^#\s*\w+.*/, "t-k"],
+      [/^("[^"]*"|'[^']*')/, "t-s"],
+      [/^\b(0x[0-9A-Fa-f]+|\d+)\b/, "t-n"],
+      [CPP_KW, "t-k"],
+      [/^\b(std|size_t|u?int(8|16|32|64)_t|__m256i|__m512i|__mmask8|Node|Dist)\b/, "t-b"],
+      [/^_mm\w*/, "t-f"],
+      [/^[A-Za-z_]\w*(?=\()/, "t-f"],
+    ];
+    while (rest.length) {
+      let matched = false;
+      for (const [re, cls] of rules) {
+        const m = re.exec(rest);
+        if (m && m.index === 0 && m[0].length) {
+          out += `<span class="${cls}">${esc(m[0])}</span>`;
+          rest = rest.slice(m[0].length);
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        const m = /^[A-Za-z_]\w*|^./.exec(rest);
+        out += esc(m[0]);
+        rest = rest.slice(m[0].length);
+      }
+    }
+    return out;
+  }
+
   class CodePanel {
     constructor(parent, code, title = "python") {
+      const highlight = title === "c++" ? highlightCpp : highlightPython;
       this.el = h("div", { class: "viz-panel" }, h("div", { class: "viz-panel-head" }, h("span", { text: title }), h("span", { text: T.code })));
       this.pre = h("pre", { class: "viz-code" });
       this.lines = code.replace(/\n$/, "").split("\n").map((ln) => {
-        const el = h("span", { class: "ln", html: highlightPython(ln) || " " });
+        const el = h("span", { class: "ln", html: highlight(ln) || " " });
         this.pre.appendChild(el);
         return el;
       });
@@ -656,7 +693,7 @@
     schedule() {
       clearTimeout(this.timer);
       this.timer = setTimeout(() => {
-        if (!this.playing) return;
+        if (!this.playing || this.destroyed) return;
         if (this.i >= this.frames.length - 1) {
           if (this.loop) this.go(0); else { this.pause(); return; }
         } else this.go(this.i + 1);
@@ -665,7 +702,7 @@
     }
 
     play() {
-      if (this.frames.length < 2) return;
+      if (this.destroyed || this.frames.length < 2) return;
       if (this.i >= this.frames.length - 1) this.go(0);
       this.playing = true;
       this.btnPlay.innerHTML = icon("pause");
@@ -696,7 +733,10 @@
       io.observe(this.fig);
     }
 
+    // After destroy() the player never plays again, even if playWhenVisible()
+    // was waiting for the figure to scroll into view.
     destroy() {
+      this.destroyed = true;
       this.pause();
       this.fig.removeEventListener("keydown", this.onKey);
       this.bar.remove();
