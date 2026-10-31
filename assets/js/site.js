@@ -69,10 +69,72 @@
     zenUiTimer = setTimeout(() => root.classList.remove("zen-ui"), 2200);
   }
 
+  /* ------------------------------------------------------------ Text size */
+  // "normal", "large" or "xlarge": a data-font-size attribute on <html> that
+  // sets the root font size (boot.js restores it before the first paint).
+  const SIZES = ["normal", "large", "xlarge"];
+  const currentSize = () => (SIZES.includes(root.getAttribute("data-font-size")) ? root.getAttribute("data-font-size") : "normal");
+
+  // The block of text at the top of the window, so that it stays in place when
+  // the text above it grows or shrinks.
+  function readingAnchor() {
+    const prose = $(".main .prose");
+    if (!prose || window.scrollY < 40) return null;
+    const box = prose.getBoundingClientRect();
+    const bar = root.classList.contains("zen") ? 0 : $("#topbar").getBoundingClientRect().bottom;
+    let node = document.elementFromPoint(box.left + box.width / 2, bar + 12);
+    while (node && node.parentElement && node.parentElement !== prose) node = node.parentElement;
+    return node && prose.contains(node) ? { node, top: node.getBoundingClientRect().top } : null;
+  }
+
+  function setSize(size, broadcast = true) {
+    if (!SIZES.includes(size)) return;
+    const anchor = size !== currentSize() ? readingAnchor() : null;
+    if (size === "normal") root.removeAttribute("data-font-size");
+    else root.setAttribute("data-font-size", size);
+    if (broadcast) store.set("tira-font-size", size === "normal" ? null : size);
+    if (anchor) window.scrollBy({ top: anchor.node.getBoundingClientRect().top - anchor.top, behavior: "instant" });
+    $$("[data-size]").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.size === size)));
+    if (broadcast && channel) channel.postMessage("size");
+  }
+
+  function initSizeMenu() {
+    const menu = $("[data-size-menu]");
+    if (!menu) return;
+    const toggle = $("[data-size-toggle]", menu);
+    const list = $(".size-list", menu);
+    const items = $$("[data-size]", list);
+    const open = () => {
+      list.hidden = false;
+      toggle.setAttribute("aria-expanded", "true");
+      // preventScroll: the menu is in the fixed top bar, but a focus inside the
+      // scroll padding would still make the browser scroll the page.
+      (items.find((b) => b.getAttribute("aria-checked") === "true") || items[0]).focus({ preventScroll: true });
+    };
+    const close = (focusToggle) => {
+      if (list.hidden) return;
+      list.hidden = true;
+      toggle.setAttribute("aria-expanded", "false");
+      if (focusToggle) toggle.focus({ preventScroll: true });
+    };
+    toggle.addEventListener("click", () => (list.hidden ? open() : close(false)));
+    items.forEach((b) => b.addEventListener("click", () => { setSize(b.dataset.size); close(true); }));
+    menu.addEventListener("keydown", (e) => {
+      const i = items.indexOf(document.activeElement);
+      if (e.key === "Escape") { e.preventDefault(); close(true); }
+      else if (e.key === "ArrowDown" && i >= 0) { e.preventDefault(); items[(i + 1) % items.length].focus({ preventScroll: true }); }
+      else if (e.key === "ArrowUp" && i >= 0) { e.preventDefault(); items[(i + items.length - 1) % items.length].focus({ preventScroll: true }); }
+      else if (e.key === "Tab") close(false);
+    });
+    document.addEventListener("click", (e) => { if (!menu.contains(e.target)) close(false); });
+    setSize(currentSize(), false);
+  }
+
   if (channel) {
     channel.onmessage = (event) => {
       if (event.data === "theme") applyTheme();
       if (event.data === "zen") setZen(store.get("tira-zen") === "1", false);
+      if (event.data === "size") setSize(store.get("tira-font-size") || "normal", false);
     };
   }
 
@@ -645,6 +707,7 @@
     $$("[data-nav-close]").forEach((b) => b.addEventListener("click", () => closeNav(true)));
     $$(".sidebar a").forEach((a) => a.addEventListener("click", () => closeNav()));
     $$("[data-open-search]").forEach((b) => b.addEventListener("click", openSearch));
+    initSizeMenu();
 
     renderMath();
     enhanceHeadings();

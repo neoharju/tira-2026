@@ -25,6 +25,10 @@ fi:
   theme_title: Vaihda teemaa
   theme_aria: Vaihda vaalean ja tumman teeman välillä
   theme_aria_short: Vaihda teemaa
+  text_size: Tekstin koko
+  text_size_normal: Normaali
+  text_size_large: Suuri
+  text_size_xlarge: Erittäin suuri
   source_title: Materiaalin lähdekoodi GitHubissa
   source_aria: Lähdekoodi GitHubissa
   chapter: Luku
@@ -58,6 +62,10 @@ en:
   theme_title: Change theme
   theme_aria: Switch between the light and dark theme
   theme_aria_short: Change theme
+  text_size: Text size
+  text_size_normal: Normal
+  text_size_large: Large
+  text_size_xlarge: Extra large
   source_title: Source of the material on GitHub
   source_aria: Source on GitHub
   chapter: Chapter

@@ -22,6 +22,16 @@
       <button class="icon-btn" type="button" data-zen-toggle aria-pressed="false" title="{{ ui.zen_title }}" aria-label="{{ ui.zen }}">
         <svg class="icon"><use href="#i-zen"/></svg>
       </button>
+      <div class="size-menu" data-size-menu>
+        <button class="icon-btn" type="button" data-size-toggle aria-haspopup="menu" aria-expanded="false" aria-controls="size-list" title="{{ ui.text_size }}" aria-label="{{ ui.text_size }}">
+          <span class="size-glyph" aria-hidden="true">Aa</span>
+        </button>
+        <div class="size-list" id="size-list" role="menu" aria-label="{{ ui.text_size }}" hidden>
+          <button type="button" role="menuitemradio" aria-checked="true" data-size="normal"><span class="size-sample" aria-hidden="true">A</span>{{ ui.text_size_normal }}<svg class="icon size-check" aria-hidden="true"><use href="#i-check"/></svg></button>
+          <button type="button" role="menuitemradio" aria-checked="false" data-size="large"><span class="size-sample is-large" aria-hidden="true">A</span>{{ ui.text_size_large }}<svg class="icon size-check" aria-hidden="true"><use href="#i-check"/></svg></button>
+          <button type="button" role="menuitemradio" aria-checked="false" data-size="xlarge"><span class="size-sample is-xlarge" aria-hidden="true">A</span>{{ ui.text_size_xlarge }}<svg class="icon size-check" aria-hidden="true"><use href="#i-check"/></svg></button>
+        </div>
+      </div>
       <button class="icon-btn" type="button" data-theme-toggle title="{{ ui.theme_title }}" aria-label="{{ ui.theme_aria }}">
         <svg class="icon icon-sun"><use href="#i-sun"/></svg>
         <svg class="icon icon-moon"><use href="#i-moon"/></svg>

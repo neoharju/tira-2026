@@ -129,6 +129,8 @@ variable panels.
 * Light and dark theme (follows the system setting until chosen), with the
   colours of the [intro-to-ai](https://github.com/neoharju/intro-to-ai) site:
   slate greys and one blue accent.
+* Text size: normal, large or extra large, from the `Aa` menu in the top bar.
+  The reading text grows; the top bar keeps its size.
 * Zen mode (`Z` or the lotus button): hides the navigation and shows the text
   on a calm background. `Esc` exits.
 * Search: `/` or `Ctrl K` / `⌘ K`.
