@@ -112,7 +112,7 @@ Figures are included with
 
 A page with figures loads `assets/js/viz-core.js` and the figure scripts named
 in its `viz` front matter, which `_config.yml` sets for each part: `graphs`,
-`trees` and `arrays` for Parts I–II, `hardware`, `paths` and `speedups`
+`trees` and `arrays` for Parts I–II, `hardware`, `paths`, `speedups` and `web`
 (English captions) for Part III. Code panels highlight Python, or C++ when the
 panel's title is `c++`.
 
