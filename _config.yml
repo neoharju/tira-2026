@@ -86,3 +86,4 @@ exclude:
   - README.md
   - CORRECTIONS.md
   - PLAN.md
+  - cpp

@@ -80,7 +80,9 @@ part under `defaults` in `_config.yml`; it selects the interface strings
 one of the existing icons (for example `glyph: osa14`).
 
 Parts III–V are planned in `PLAN.md`: topics, tasks, tools and
-infrastructure for weeks 17–40.
+infrastructure for weeks 17–40. Their tasks are C++ code in `cpp/` (starting
+code, tests and benchmarks; see `cpp/README.md`), which is not part of the
+website.
 
 Formatting conventions (kramdown, GFM input):
 
