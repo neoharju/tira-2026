@@ -4,6 +4,9 @@
    fill of its pages, SIMD node search, differential fuzzing and bulk loading.
    The small examples run the algorithms of the chapters' C++ code; the charts
    show the measurements quoted in the text.
+   Chapters 27 and 28: a slotted page, a buffer pool with CLOCK, a Count-Min
+   sketch, W-TinyLFU, cache policies compared in the browser, open addressing,
+   the Swiss table probe, hash flooding and consistent hashing.
    Part IV pages load this file through the `viz` list in _config.yml. */
 (() => {
   "use strict";
@@ -1055,5 +1058,774 @@
         ui.setCaption(f.cap);
       },
     });
+  });
+
+  /* ============================================ chapter 27: pages, buffer pool, caching */
+
+  /* ------------------------------------------------- a slotted page */
+  register("slotted-page", (fig) => {
+    // A toy page of 512 bytes (real pages have 4096), with the rules of page.hpp.
+    const PAGE = 512, HEADER = 8, SLOT = 4;
+    let rng, page;
+    const freeBegin = () => HEADER + SLOT * page.slots.length;
+    function compact() {
+      const live = page.slots.filter((s) => s.off).sort((a, b) => b.off - a.off);
+      let end = PAGE;
+      for (const s of live) {
+        end -= s.len;
+        s.off = end;
+      }
+      page.freeEnd = end;
+      page.garbage = 0;
+    }
+    function insert(len) {
+      let slot = page.slots.findIndex((s) => s.off === 0);
+      const fresh = slot < 0;
+      if (fresh) slot = page.slots.length;
+      const need = len + (fresh ? SLOT : 0), free = page.freeEnd - freeBegin();
+      if (free < need && free + page.garbage < need) return { ok: false, len, need, free, garbage: page.garbage };
+      const compacted = free < need;
+      if (compacted) compact();
+      page.freeEnd -= len;
+      if (fresh) page.slots.push({ off: 0, len: 0 });
+      page.slots[slot] = { off: page.freeEnd, len };
+      return { ok: true, slot, len, fresh, compacted };
+    }
+    function reset() {
+      rng = mulberry32(27);
+      page = { freeEnd: PAGE, garbage: 0, slots: [] };
+      for (const len of [40, 72, 28, 56, 36]) insert(len);
+    }
+    reset();
+    const ui = frame(fig, { title: "A slotted page", kicker: "Try it" });
+    ui.stage.classList.add("is-plain");
+    const W = 640, H = 118, X0 = 16, X1 = 624;
+    const svg = svgBox(ui.stage, W, H, "st-page-svg");
+    const list = h("div", { class: "st-slotlist" });
+    ui.stage.appendChild(list);
+    const tools = toolbar(ui);
+    const bx = (b) => X0 + (b / PAGE) * (X1 - X0);
+    function draw() {
+      svg.textContent = "";
+      const y = 22, hh = 40;
+      rect(svg, bx(0), y, bx(PAGE) - bx(0), hh, "st-pg-free", 3);
+      rect(svg, bx(0), y, bx(HEADER) - bx(0), hh, "st-pg-header", 2);
+      page.slots.forEach((s, i) => rect(svg, bx(HEADER + SLOT * i) + 0.5, y + 4, bx(SLOT) - bx(0) - 1, hh - 8, s.off ? `st-pg-slot c${i % 6}` : "st-pg-slot is-free", 1));
+      // garbage: the records area minus the live records
+      const live = page.slots.filter((s) => s.off).sort((a, b) => a.off - b.off);
+      let at = page.freeEnd;
+      for (const s of [...live, { off: PAGE, len: 0 }]) {
+        if (s.off > at) rect(svg, bx(at), y, bx(s.off) - bx(at), hh, "st-pg-garbage", 0);
+        at = Math.max(at, s.off + s.len);
+      }
+      page.slots.forEach((s, i) => {
+        if (!s.off) return;
+        rect(svg, bx(s.off) + 0.5, y, bx(s.off + s.len) - bx(s.off) - 1, hh, `st-pg-rec c${i % 6}`, 2);
+        if (bx(s.off + s.len) - bx(s.off) > 18) label(svg, (bx(s.off) + bx(s.off + s.len)) / 2, y + hh / 2, String(i), "st-pg-lbl");
+      });
+      // byte 0 and 512 on the first line, free_begin and free_end on the second
+      const marks = [[0, "0", 0, "start"], [PAGE, String(PAGE), 0, "end"], [freeBegin(), "free_begin", 1, "start"], [page.freeEnd, "free_end", 1, "end"]];
+      marks.forEach(([b, name, line, anchor]) => {
+        seg(svg, bx(b), y + hh, bx(b), y + hh + 6 + 14 * line, "st-grid");
+        label(svg, bx(b) + (anchor === "start" ? 3 : -3) * line, y + hh + 16 + 14 * line, name, "st-tick", anchor);
+      });
+      label(svg, bx(HEADER / 2), y - 9, "header", "st-tick", "start");
+      label(svg, (bx(freeBegin()) + bx(page.freeEnd)) / 2, y - 9, `free: ${page.freeEnd - freeBegin()} B`, "st-tick");
+      if (page.garbage) label(svg, bx(PAGE), y - 9, `garbage: ${page.garbage} B`, "st-tick", "end");
+      list.textContent = "";
+      list.append(cells(page.slots.map((s, i) => (s.off ? `${i}: ${s.off}+${s.len}` : `${i}: free`)), (i) => (page.slots[i].off ? `c${i % 6}` : "is-dim"), "slots"));
+    }
+    const act = (name, f) => button(tools, name, () => { ui.setCaption(f()); draw(); });
+    const describe = (r) => (r.ok
+      ? `Inserted ${r.len} bytes as slot ${r.slot}, ${r.fresh ? "a new slot (4 more bytes of slot array)" : "the smallest free slot"}, just below free_end.${r.compacted ? " The free space was too small, but with the garbage it was enough, so the page compacted first." : ""}`
+      : `No room for ${r.len} bytes: with ${r.need > r.len ? "a new slot" : "its slot"} they need ${r.need} bytes, and the page has ${r.free} free and ${r.garbage} of garbage. A database would use another page.`);
+    act("Insert small", () => describe(insert(12 + Math.floor(rng() * 32))));
+    act("Insert large", () => describe(insert(60 + Math.floor(rng() * 70))));
+    act("Erase", () => {
+      const live = page.slots.map((s, i) => i).filter((i) => page.slots[i].off);
+      if (!live.length) return "The page has no records.";
+      const i = live[Math.floor(rng() * live.length)];
+      const len = page.slots[i].len;
+      page.garbage += len;
+      page.slots[i] = { off: 0, len: 0 };
+      return `Erased slot ${i}: its ${len} bytes are garbage now, and the slot is free for the next insert. Nothing moved.`;
+    });
+    act("Compact", () => {
+      compact();
+      return "Compacted: the records moved together at the end of the page, the garbage became free space, and every record kept its slot number.";
+    });
+    act("Reset", () => { reset(); return "Five records in a page of 512 bytes (a real page has 4096)."; });
+    ui.setCaption("Five records in a page of 512 bytes (a real page has 4096). The slots grow from the left, the records from the right; each record has the color of its slot.");
+    draw();
+  });
+
+  /* ------------------------------------------------- a buffer pool with CLOCK */
+  register("buffer-pool", (fig) => {
+    const FRAMES = 6;
+    // fetch page p; `hold`: stays pinned during the next requests; `dirty`: changed
+    const REQUESTS = [
+      { p: 1 }, { p: 2 }, { p: 3, hold: 10 }, { p: 1 }, { p: 4, dirty: true }, { p: 2 }, { p: 5 }, { p: 1 }, { p: 6 },
+      { p: 7 }, { p: 2 }, { p: 1 }, { p: 8, dirty: true }, { p: 9 }, { p: 1 }, { p: 2 }, { p: 4 }, { p: 10 }, { p: 1 },
+    ];
+    const frames = [];
+    {
+      const fr = Array.from({ length: FRAMES }, () => ({ page: null, pins: 0, ref: 0, dirty: false }));
+      const table = new Map();
+      let hand = 0, reads = 0, writes = 0, hits = 0, unused = 0;
+      const held = [];  // {frame, until, dirty}
+      const snap = () => fr.map((f) => ({ ...f }));
+      frames.push({ fr: snap(), hand, req: -1, reads, writes, hits, sweep: [], cap: `${FRAMES} empty frames, and a list of page requests. A request pins the page while it is used: most pages are unpinned at once, page 3 stays pinned for a while.` });
+      REQUESTS.forEach((r, k) => {
+        for (let i = held.length - 1; i >= 0; i--) if (held[i].until < k) { const f = fr[held[i].frame]; f.pins--; f.dirty = f.dirty || held[i].dirty; held.splice(i, 1); }
+        let f, cap, sweep = [];
+        if (table.has(r.p)) {
+          f = table.get(r.p);
+          fr[f].pins++;
+          fr[f].ref = 1;
+          hits++;
+          cap = `Page ${r.p} is in frame ${f}: a hit. Its reference bit is set again, and nothing is read.`;
+        } else {
+          let note = "";
+          if (unused < FRAMES) {
+            f = unused++;
+            note = `frame ${f} has never held a page.`;
+          } else {
+            for (;;) {
+              const g = fr[hand];
+              const at = hand;
+              hand = (hand + 1) % FRAMES;
+              if (g.pins > 0) { sweep.push([at, "skip"]); continue; }
+              if (g.ref) { g.ref = 0; sweep.push([at, "clear"]); continue; }
+              sweep.push([at, "victim"]);
+              f = at;
+              break;
+            }
+            const cleared = sweep.filter(([, a]) => a === "clear").map(([x]) => x), skipped = sweep.filter(([, a]) => a === "skip").map(([x]) => x);
+            const old = fr[f];
+            note = `every frame holds a page, so the hand moves:${cleared.length ? ` it clears the bits of frame${cleared.length > 1 ? "s" : ""} ${cleared.join(", ")},` : ""}${skipped.length ? ` skips frame ${skipped.join(", ")} (pinned),` : ""} and evicts frame ${f} (page ${old.page}, its bit was clear).${old.dirty ? ` Page ${old.page} was dirty, so it is written to the disk first.` : ""}`;
+            if (old.dirty) writes++;
+            table.delete(old.page);
+          }
+          reads++;
+          fr[f] = { page: r.p, pins: 1, ref: 1, dirty: false };
+          table.set(r.p, f);
+          cap = `Page ${r.p} is not in the pool: ${note} Then page ${r.p} is read into frame ${f}.`;
+        }
+        if (r.hold) held.push({ frame: f, until: k + r.hold, dirty: !!r.dirty });
+        else {
+          fr[f].pins--;
+          fr[f].dirty = fr[f].dirty || !!r.dirty;
+          if (r.dirty) cap += ` The request changes the page: it is dirty now.`;
+        }
+        frames.push({ fr: snap(), hand, req: k, reads, writes, hits, sweep, cap });
+      });
+      frames[frames.length - 1].cap += ` In all: ${hits} hits, ${reads} pages read, ${writes} written.`;
+    }
+    const ui = frame(fig, { title: "A buffer pool with CLOCK", kicker: "Animation", split: true });
+    ui.stage.classList.add("is-plain");
+    const W = 420, H = 300, CX = 210, CY = 150, R = 104;
+    const svg = svgBox(ui.stage, W, H, "st-pool");
+    const reqs = h("div", { class: "st-reqs" });
+    ui.stage.appendChild(reqs);
+    const side = h("div", { class: "st-side" });
+    ui.side.appendChild(side);
+    const pos = (i) => [CX + R * Math.sin((2 * Math.PI * i) / FRAMES), CY - R * Math.cos((2 * Math.PI * i) / FRAMES)];
+    new Player(fig, {
+      frames, interval: 1700,
+      apply: (f) => {
+        svg.textContent = "";
+        s("circle", { cx: CX, cy: CY, r: R, class: "st-dial" }, svg);
+        const marks = new Map(f.sweep);
+        const [hx, hy] = pos(f.hand);
+        s("path", { d: `M${CX} ${CY} L${(CX + (hx - CX) * 0.62).toFixed(1)} ${(CY + (hy - CY) * 0.62).toFixed(1)}`, class: "st-hand" }, svg);
+        s("circle", { cx: CX, cy: CY, r: 5, class: "st-hand-hub" }, svg);
+        f.fr.forEach((fr, i) => {
+          const [x, y] = pos(i);
+          const m = marks.get(i);
+          const cur = f.req >= 0 && fr.page === REQUESTS[f.req].p;
+          rect(svg, x - 34, y - 24, 68, 48, `st-frame${fr.pins ? " is-pinned" : ""}${m === "victim" ? " is-victim" : cur ? " is-cur" : ""}`, 8);
+          label(svg, x, y - 3, fr.page == null ? "–" : `page ${fr.page}`, "st-frame-lbl");
+          s("circle", { cx: x - 25, cy: y + 13, r: 4.5, class: `st-refbit${fr.ref ? " is-on" : ""}` }, svg);
+          label(svg, x - 17, y + 13.5, "ref", "st-mini", "start");
+          if (fr.pins) label(svg, x + 30, y + 13.5, `pin ${fr.pins}`, "st-mini is-pin", "end");
+          else if (fr.dirty) label(svg, x + 30, y + 13.5, "dirty", "st-mini is-dirty", "end");
+          if (m === "clear") label(svg, x, y - 32, "bit cleared", "st-mini is-clear");
+          if (m === "skip") label(svg, x, y - 32, "pinned: skipped", "st-mini is-pin");
+          label(svg, x, y + 36, `frame ${i}`, "st-tick");
+        });
+        reqs.textContent = "";
+        reqs.append(cells(REQUESTS.map((r) => `${r.p}${r.hold ? "·" : ""}${r.dirty ? "*" : ""}`), (i) => (i === f.req ? "is-cur" : i < f.req ? "is-dim" : ""), "requests"));
+        side.textContent = "";
+        side.append(panel("disk", null, h("div", { class: "st-kv" },
+          h("span", { text: "hits" }), h("b", { text: String(f.hits) }),
+          h("span", { text: "pages read" }), h("b", { text: String(f.reads) }),
+          h("span", { text: "pages written" }), h("b", { text: String(f.writes) }))),
+          h("p", { class: "st-note", text: "· stays pinned for a while   * changes the page" }));
+        ui.setCaption(f.cap);
+      },
+    });
+  });
+
+  /* ------------------------------------------------- a Count-Min sketch */
+  register("count-min", (fig) => {
+    const KEYS = "ABCDEFGH".split(""), ROWS = 4, WIDTH = 16;
+    const WEIGHTS = [8, 5, 4, 3, 2, 2, 1, 1];  // how often "20 random" draws each key
+    // the counter of a key in each row (fixed, with some collisions)
+    const POS = KEYS.map((k, i) => Array.from({ length: ROWS }, (_, r) => (Math.imul(i * 2654435761 + r * 40503 + 7, 2246822519) >>> 27) % WIDTH));
+    let counters, truth, conservative = false, last = null, rng;
+    function reset() {
+      counters = Array.from({ length: ROWS }, () => new Array(WIDTH).fill(0));
+      truth = new Array(KEYS.length).fill(0);
+      last = null;
+      rng = mulberry32(5);
+    }
+    function addRandom(n) {
+      const total = WEIGHTS.reduce((a, b) => a + b, 0);
+      for (let k = 0; k < n; k++) {
+        let u = rng() * total, i = 0;
+        while (u >= WEIGHTS[i]) u -= WEIGHTS[i++];
+        add(i);
+      }
+      last = null;
+    }
+    reset();
+    const estimate = (i) => Math.min(...POS[i].map((j, r) => counters[r][j]));
+    function add(i) {
+      const m = estimate(i);
+      POS[i].forEach((j, r) => { if (!conservative || counters[r][j] === m) counters[r][j] = Math.min(15, counters[r][j] + 1); });
+      truth[i]++;
+      last = i;
+    }
+    const ui = frame(fig, { title: "A Count-Min sketch", kicker: "Try it" });
+    ui.stage.classList.add("is-plain");
+    const box = h("div", { class: "st-cm" });
+    ui.stage.appendChild(box);
+    const tools = toolbar(ui);
+    KEYS.forEach((k, i) => button(tools, k, () => { add(i); draw(); }));
+    button(tools, "20 random", () => { addRandom(20); draw(); });
+    toggle(tools, "Update", [[false, "all 4"], [true, "conservative"]], conservative, (v) => { conservative = v; reset(); addRandom(20); draw(); });
+    button(tools, "Halve all", () => { counters.forEach((row) => row.forEach((c, j) => (row[j] = c >> 1))); last = null; draw(true); });
+    button(tools, "Reset", () => { reset(); addRandom(20); draw(); });
+    function draw(halved = false) {
+      box.textContent = "";
+      for (let r = 0; r < ROWS; r++)
+        box.append(cells(counters[r], (j) => {
+          if (last == null || POS[last][r] !== j) return counters[r][j] ? "" : "is-dim";
+          return counters[r][j] === estimate(last) ? "is-hit" : "is-cur";
+        }, `row ${r + 1}`));
+      const table = h("div", { class: "st-cm-keys" });
+      table.append(cells(KEYS, (i) => (i === last ? "is-cur" : ""), "key"), cells(truth, () => "", "seen"),
+        cells(KEYS.map((_, i) => estimate(i)), (i) => (estimate(i) > truth[i] ? "is-bad" : "is-hit"), "estimate"));
+      box.append(table);
+      if (halved) {
+        ui.setCaption("Aging: every counter was halved (rounded down). The sketch now remembers half as much of the past, so new popular keys can win against old ones. (The seen row shows the true counts before halving.)");
+      } else if (last == null) {
+        ui.setCaption(`${truth.reduce((x, y) => x + y, 0)} keys counted so far. Add keys and watch their 4 counters, one in each row. ${conservative ? "With the conservative update, only the counters that are equal to the smallest one grow." : "Every addition adds one to all 4 counters of the key."} The estimate (the smallest of the 4) is red where other keys made it too large.`);
+      } else {
+        const vals = POS[last].map((j, r) => counters[r][j]);
+        ui.setCaption(`Key ${KEYS[last]}: its counters are ${vals.join(", ")}, so the estimate is the smallest, ${estimate(last)}; it was really seen ${truth[last]} time${truth[last] === 1 ? "" : "s"}. ${estimate(last) < truth[last] ? "The counters stop at 15, like the 4-bit counters of TinyLFU: it only needs to know which key is more popular." : estimate(last) > truth[last] ? "Another key shares each of its counters, so every counter is too large." : "At least one of its counters is shared with no other key, so the estimate is right."}`);
+      }
+    }
+    addRandom(20);
+    draw();
+  });
+
+  // W-TinyLFU with the rules of task5_wtinylfu.hpp and exact frequencies (with
+  // aging), for the figures. Lists are Maps in recency order: the first entry
+  // is the least recent, the last the most recent.
+  class WTinyLfuSim {
+    constructor(capacity) {
+      this.capacity = capacity;
+      this.windowMax = Math.max(1, Math.floor(capacity / 100));
+      this.protectedMax = Math.floor(((capacity - this.windowMax) * 8) / 10);
+      this.window = new Map();
+      this.probation = new Map();
+      this.prot = new Map();
+      this.freq = new Map();
+      this.additions = 0;
+      this.sample = 10 * capacity;
+    }
+    count(k) { return this.freq.get(k) || 0; }
+    increment(k) {
+      this.freq.set(k, Math.min(15, this.count(k) + 1));
+      if (++this.additions === this.sample) {
+        for (const [key, c] of this.freq) { if (c >> 1) this.freq.set(key, c >> 1); else this.freq.delete(key); }
+        this.additions >>= 1;
+      }
+    }
+    // Returns an event: {hit, where} or {miss, candidate, victim, admitted, evicted}.
+    access(k) {
+      this.increment(k);
+      if (this.window.has(k)) { this.window.delete(k); this.window.set(k, 1); return { hit: true, where: "window" }; }
+      if (this.prot.has(k)) { this.prot.delete(k); this.prot.set(k, 1); return { hit: true, where: "protected" }; }
+      if (this.probation.has(k)) {
+        this.probation.delete(k);
+        this.prot.set(k, 1);
+        let demoted = null;
+        if (this.prot.size > this.protectedMax) {
+          demoted = this.prot.keys().next().value;
+          this.prot.delete(demoted);
+          this.probation.set(demoted, 1);
+        }
+        return { hit: true, where: "probation", demoted };
+      }
+      this.window.set(k, 1);
+      const ev = { hit: false };
+      if (this.window.size > this.windowMax) {
+        const c = this.window.keys().next().value;
+        this.window.delete(c);
+        ev.candidate = c;
+        if (this.probation.size + this.prot.size < this.capacity - this.windowMax) {
+          this.probation.set(c, 1);
+          ev.admitted = c;
+        } else {
+          const list = this.probation.size ? this.probation : this.prot;
+          const v = list.keys().next().value;
+          ev.victim = v;
+          if (this.count(c) > this.count(v)) {
+            list.delete(v);
+            this.probation.set(c, 1);
+            ev.admitted = c;
+            ev.evicted = v;
+          } else {
+            ev.evicted = c;
+          }
+        }
+      }
+      return ev;
+    }
+    contains(k) { return this.window.has(k) || this.probation.has(k) || this.prot.has(k); }
+  }
+
+  /* ------------------------------------------------- W-TinyLFU step by step */
+  register("wtinylfu", (fig) => {
+    const CAP = 10;  // window 1, protected at most 7
+    const TRACE = "a b c a d b e a c f b a g d c b x1 a x2 x3 b x4 x5 c x6 a x7 b c".split(" ");
+    const frames = [];
+    {
+      const sim = new WTinyLfuSim(CAP);
+      const snap = () => ({ window: [...sim.window.keys()].reverse(), probation: [...sim.probation.keys()].reverse(), prot: [...sim.prot.keys()].reverse(), freq: new Map(sim.freq) });
+      frames.push({ ...snap(), k: null, cap: "A cache of 10 keys: a window of 1 key, and a main part of 9 with a protected list of at most 7. The popular keys a, b and c come back often; x1 ... x7 are a scan: each is used once." });
+      for (const k of TRACE) {
+        const ev = sim.access(k);
+        let cap;
+        if (ev.hit) {
+          cap = ev.where === "probation"
+            ? `${k}: a hit in probation, so ${k} moves up to protected.${ev.demoted ? ` Protected is too large: its oldest key ${ev.demoted} goes back to probation.` : ""}`
+            : `${k}: a hit in ${ev.where}; ${k} becomes the most recent there.`;
+        } else if (!ev.candidate) {
+          cap = `${k}: a miss; ${k} enters the window.`;
+        } else if (!ev.victim) {
+          cap = `${k}: a miss; ${k} enters the window and pushes out ${ev.candidate}, which goes to probation: the main part still has room.`;
+        } else {
+          const won = ev.admitted === ev.candidate;
+          cap = `${k}: a miss; ${k} enters the window and pushes out ${ev.candidate}. The main part is full, so ${ev.candidate} (seen ${sim.count(ev.candidate)} time${sim.count(ev.candidate) === 1 ? "" : "s"}) meets the victim ${ev.victim} (seen ${sim.count(ev.victim)} times): ${won ? `${ev.candidate} wins, ${ev.victim} is evicted.` : `${ev.victim} stays, ${ev.candidate} is evicted.`}`;
+        }
+        frames.push({ ...snap(), k, ev, cap });
+      }
+      frames[frames.length - 1].cap += " The scan passed through the window, and a, b and c are still in the cache.";
+    }
+    const ui = frame(fig, { title: "W-TinyLFU", kicker: "Animation" });
+    ui.stage.classList.add("is-plain");
+    const box = h("div", { class: "st-wtl" });
+    ui.stage.appendChild(box);
+    new Player(fig, {
+      frames, interval: 1600,
+      apply: (f) => {
+        box.textContent = "";
+        const show = (keys, max, name) => {
+          const vals = keys.map((k) => `${k} · ${f.freq.get(k) || 0}`);
+          while (vals.length < max) vals.push("");
+          return cells(vals, (i) => {
+            const k = keys[i];
+            if (k == null) return "is-empty";
+            if (f.ev && f.ev.victim === k) return "is-victim";
+            if (f.ev && f.ev.candidate === k) return "is-cand";
+            return k === f.k ? "is-cur" : "";
+          }, name);
+        };
+        box.append(show(f.window, 1, "window"), show(f.probation, CAP - 1, "probation"), show(f.prot, 7, "protected"));
+        const ev = f.ev;
+        if (ev && ev.evicted) box.append(h("div", { class: "st-evicted" }, h("span", { text: "evicted" }), h("b", { text: ev.evicted })));
+        ui.setCaption(f.cap);
+      },
+    });
+  });
+
+  /* ------------------------------------------------- LRU, CLOCK and W-TinyLFU */
+  register("cache-policies", (fig) => {
+    const N = 60000, KEYS = 3000;
+    function zipfSampler(n, alpha, rng) {
+      const cdf = new Float64Array(n);
+      let sum = 0;
+      for (let i = 0; i < n; i++) cdf[i] = sum += 1 / Math.pow(i + 1, alpha);
+      return () => {
+        const u = rng() * sum;
+        let lo = 0, hi = n - 1;
+        while (lo < hi) { const mid = (lo + hi) >> 1; if (cdf[mid] < u) lo = mid + 1; else hi = mid; }
+        return lo;
+      };
+    }
+    const scramble = (x) => Math.imul(x ^ 0x5bd1e995, 2654435761) >>> 0;
+    const TRACES = {
+      zipf: () => { const rng = mulberry32(1), z = zipfSampler(KEYS, 0.9, rng); return Array.from({ length: N }, () => scramble(z())); },
+      scans: () => {
+        const rng = mulberry32(2), z = zipfSampler(KEYS, 0.9, rng), t = [];
+        let fresh = 1e7;
+        while (t.length < N) {
+          for (let i = 0; i < 3000 && t.length < N; i++) t.push(scramble(z()));
+          for (let i = 0; i < 1500 && t.length < N; i++) t.push(fresh++);
+        }
+        return t;
+      },
+      loop: () => Array.from({ length: N }, (_, i) => scramble(i % 500)),
+      shifting: () => { const rng = mulberry32(4), z = zipfSampler(KEYS, 0.9, rng); return Array.from({ length: N }, (_, i) => scramble(z() + KEYS * Math.floor(i / 15000))); },
+    };
+    const NAMES = { zipf: "Zipf's law", scans: "Zipf's law and scans", loop: "a loop over 500 keys", shifting: "popular keys change" };
+    const cache = {};
+    const traceOf = (name) => (cache[name] ||= TRACES[name]());
+    function lru(trace, cap) {
+      const m = new Map();
+      let hits = 0;
+      for (const k of trace) {
+        if (m.has(k)) { hits++; m.delete(k); m.set(k, 1); continue; }
+        if (m.size === cap) m.delete(m.keys().next().value);
+        m.set(k, 1);
+      }
+      return hits / trace.length;
+    }
+    function clock(trace, cap) {
+      const where = new Map(), page = new Array(cap), ref = new Uint8Array(cap);
+      let hand = 0, used = 0, hits = 0;
+      for (const k of trace) {
+        const f = where.get(k);
+        if (f !== undefined) { hits++; ref[f] = 1; continue; }
+        let g;
+        if (used < cap) g = used++;
+        else {
+          while (ref[hand]) { ref[hand] = 0; hand = (hand + 1) % cap; }
+          g = hand;
+          hand = (hand + 1) % cap;
+          where.delete(page[g]);
+        }
+        page[g] = k;
+        ref[g] = 1;
+        where.set(k, g);
+      }
+      return hits / trace.length;
+    }
+    function wtinylfu(trace, cap) {
+      const sim = new WTinyLfuSim(cap);
+      let hits = 0;
+      for (const k of trace) hits += sim.access(k).hit ? 1 : 0;
+      return hits / trace.length;
+    }
+    let trace = "scans", size = 300;
+    const ui = frame(fig, { title: "LRU, CLOCK and W-TinyLFU", kicker: "Try it" });
+    ui.stage.classList.add("is-plain");
+    const W = 560, H = 210, M = { l: 112, r: 60, t: 14, b: 26 };
+    const svg = svgBox(ui.stage, W, H, "st-chart");
+    const tools = toolbar(ui);
+    toggle(tools, "Trace", Object.keys(NAMES).map((k) => [k, NAMES[k]]), trace, (v) => { trace = v; draw(); });
+    slider(tools, "Cache size", { min: 50, max: 800, step: 50, value: size, format: (v) => `${v} keys` }, (v) => { size = v; draw(); });
+    function draw() {
+      const t = traceOf(trace);
+      const res = [["LRU", lru(t, size), "c5"], ["CLOCK", clock(t, size), "c1"], ["W-TinyLFU", wtinylfu(t, size), "c2"]];
+      svg.textContent = "";
+      const X = (v) => M.l + v * (W - M.l - M.r);
+      for (const v of [0, 0.25, 0.5, 0.75, 1]) { seg(svg, X(v), M.t, X(v), H - M.b, "st-grid"); label(svg, X(v), H - M.b + 14, `${v * 100} %`, "st-tick"); }
+      const bh = (H - M.t - M.b) / res.length;
+      res.forEach(([name, v, cls], i) => {
+        const y = M.t + i * bh + 8;
+        label(svg, M.l - 10, y + (bh - 16) / 2, name, "st-axis-name", "end");
+        rect(svg, X(0), y, X(v) - X(0), bh - 16, `st-bar ${cls}`, 3);
+        label(svg, X(v) + 6, y + (bh - 16) / 2, `${(v * 100).toFixed(1)} %`, "st-tick", "start");
+      });
+      const best = res.reduce((a, b) => (b[1] > a[1] ? b : a));
+      const why = { zipf: "With Zipf's law alone, recency is a good guess, but frequency is better.", scans: "Every scan of 1500 new keys pushes popular keys out of LRU and CLOCK; W-TinyLFU lets the scans pass through its window.", loop: "A loop larger than the cache is the worst case of LRU: every key is evicted just before it comes back. W-TinyLFU keeps a part of the loop.", shifting: "The popular keys change after every 15,000 accesses: aging lets W-TinyLFU forget the old ones." };
+      ui.setCaption(`Hit ratios for ${NAMES[trace]}, ${N.toLocaleString("en-US")} accesses, a cache of ${size} keys, computed in your browser. ${why[trace]} Best here: ${best[0]}.`);
+    }
+    draw();
+  });
+
+  /* ============================================ chapter 28: hash tables */
+
+  // A 32-bit mixing hash for the figures (the finalizer of MurmurHash3, 32 bits).
+  const mix32 = (x) => {
+    x = Math.imul(x ^ (x >>> 16), 0x85ebca6b);
+    x = Math.imul(x ^ (x >>> 13), 0xc2b2ae35);
+    return (x ^ (x >>> 16)) >>> 0;
+  };
+
+  /* ------------------------------------------------- linear probing and Robin Hood */
+  register("open-addressing", (fig) => {
+    const SIZE = 32, COUNT = 28;  // 7/8 full at the end
+    const rng = mulberry32(28);
+    const KEYS = [];
+    while (KEYS.length < COUNT) { const k = 10 + Math.floor(rng() * 990); if (!KEYS.includes(k)) KEYS.push(k); }
+    const home = (k) => mix32(k) % SIZE;
+    let mode = "linear";
+    function make() {
+      const t = new Array(SIZE).fill(null);  // {key, dist}
+      const frames = [{ t: t.map((x) => x && { ...x }), walk: [], cap: `An empty table of ${SIZE} slots. ${mode === "linear" ? "Linear probing" : "Robin Hood hashing"} inserts ${COUNT} keys, until the table is 7/8 full. Each slot shows its key and how far it is from its home slot.` }];
+      for (const key of KEYS) {
+        let k = key, d = 0, i = home(key);
+        const walk = [], swaps = [];
+        for (;;) {
+          walk.push(i);
+          if (!t[i]) { t[i] = { key: k, dist: d }; break; }
+          if (mode === "robin" && t[i].dist < d) {
+            swaps.push([t[i].key, t[i].dist, i]);
+            const old = t[i];
+            t[i] = { key: k, dist: d };
+            k = old.key;
+            d = old.dist;
+          }
+          i = (i + 1) % SIZE;
+          d++;
+        }
+        const placed = walk[walk.length - 1];
+        let cap = `Key ${key}: home slot ${home(key)}${walk.length > 1 ? `, taken; it walks ${walk.length - 1} slot${walk.length > 2 ? "s" : ""} to the right` : ", free"}.`;
+        if (swaps.length) cap = `Key ${key}: home slot ${home(key)}. ${swaps.map(([sk, sd, si]) => `At slot ${si} it meets ${sk}, only ${sd} from home: the newcomer takes the slot, and ${sk} walks on`).join("; ")}. The walk ends at slot ${placed}.`;
+        frames.push({ t: t.map((x) => x && { ...x }), walk, key, cap });
+      }
+      // the cost of a lookup for a missing key, from every home slot
+      let miss = 0;
+      for (let s = 0; s < SIZE; s++) {
+        let i = s, d = 0, read = 0;
+        for (;;) {
+          read++;
+          if (!t[i] || (mode === "robin" && t[i].dist < d)) break;
+          i = (i + 1) % SIZE;
+          d++;
+        }
+        miss += read;
+      }
+      const dists = t.filter(Boolean).map((x) => x.dist);
+      const last = frames[frames.length - 1];
+      last.stats = { avg: dists.reduce((a, b) => a + b, 0) / dists.length, max: Math.max(...dists), miss: miss / SIZE };
+      last.cap += ` Full: on average ${last.stats.avg.toFixed(2)} slots from home, at most ${last.stats.max}; a lookup for a missing key reads ${last.stats.miss.toFixed(1)} slots on average.`;
+      return frames;
+    }
+    const ui = frame(fig, { title: "Linear probing and Robin Hood", kicker: "Try it" });
+    ui.stage.classList.add("is-plain");
+    const box = h("div", { class: "st-oa" });
+    ui.stage.appendChild(box);
+    const tools = toolbar(ui);
+    toggle(tools, "Insert with", [["linear", "linear probing"], ["robin", "Robin Hood"]], mode, (v) => { mode = v; player.setFrames(make()); });
+    const player = new Player(fig, {
+      frames: make(), interval: 900,
+      apply: (f) => {
+        box.textContent = "";
+        const walk = new Set(f.walk || []);
+        for (let row = 0; row < 2; row++) {
+          const idx = Array.from({ length: SIZE / 2 }, (_, j) => row * (SIZE / 2) + j);
+          box.append(cells(idx.map((i) => (f.t[i] ? `${f.t[i].key}` : "")), (j) => {
+            const x = f.t[idx[j]];
+            const cls = x ? `d${Math.min(x.dist, 4)}` : "is-empty";
+            return `${cls}${walk.has(idx[j]) ? " is-walk" : ""}${x && x.key === f.key ? " is-cur" : ""}`;
+          }, `slots ${row * 16}–${row * 16 + 15}`));
+          box.append(cells(idx.map((i) => (f.t[i] ? `+${f.t[i].dist}` : "")), () => "is-dist", "from home"));
+        }
+        ui.setCaption(f.cap);
+      },
+    });
+  });
+
+  /* ------------------------------------------------- the Swiss table probe */
+  register("swiss-probe", (fig) => {
+    const GROUPS = 4, G = 16;
+    const hashOf = (k) => mix32(k * 2654435761);
+    const H1 = (h) => (h >>> 7) % GROUPS, H2 = (h) => h & 127;
+    // Build a table: group 2 is full, the others partly.
+    const ctrl = new Array(GROUPS * G).fill(-1), keys = new Array(GROUPS * G).fill(null);
+    const rng = mulberry32(11);
+    function insert(k) {
+      const h = hashOf(k);
+      let g = H1(h);
+      for (let step = 1; step <= GROUPS; step++) {
+        for (let j = 0; j < G; j++) if (ctrl[g * G + j] < 0) { ctrl[g * G + j] = H2(h); keys[g * G + j] = k; return g; }
+        g = (g + step) % GROUPS;
+      }
+      return -1;
+    }
+    const inTable = [];
+    let k = 100;
+    // fill group 2 completely with keys whose home is group 2, then add others
+    while (ctrl.slice(2 * G, 3 * G).some((c) => c < 0)) { if (H1(hashOf(k)) === 2) inTable.push(k), insert(k); k++; }
+    for (let n = 0; n < 30; n++) { const x = 1000 + Math.floor(rng() * 9000); if (H1(hashOf(x)) !== 2 && !inTable.includes(x)) { inTable.push(x); insert(x); } }
+    // a key in the table behind a false match (another key of its group with the
+    // same H2), a missing key, and a key whose home group is the full group 2
+    let first = 50000;
+    while (H1(hashOf(first)) !== 0) first++;
+    let present = first + 1;
+    while (H1(hashOf(present)) !== 0 || H2(hashOf(present)) !== H2(hashOf(first))) present++;
+    inTable.push(first, present);
+    insert(first);
+    insert(present);
+    let missing = 20000;
+    while (H1(hashOf(missing)) !== 1 || inTable.includes(missing) || !ctrl.slice(G, 2 * G).some((c) => c === H2(hashOf(missing)))) missing++;
+    let behind = 30000;
+    while (H1(hashOf(behind)) !== 2) behind++;
+    inTable.push(behind);
+    insert(behind);
+    let target = present;
+    function make() {
+      const h = hashOf(target), h2 = H2(h);
+      const frames = [{ group: -1, cap: `Look up key ${target}. Its hash is ${h.toString(16).padStart(8, "0")}: H1 (the high bits) chooses group ${H1(h)}, and H2 = ${h2} (the low 7 bits) is what the control bytes store.` }];
+      let g = H1(h);
+      for (let step = 1; step <= GROUPS; step++) {
+        const match = [];
+        for (let j = 0; j < G; j++) if (ctrl[g * G + j] === h2) match.push(j);
+        const empty = ctrl.slice(g * G, g * G + G).some((c) => c < 0);
+        frames.push({ group: g, match, cap: `Group ${g}: one SIMD compare of the 16 control bytes with H2 = ${h2} gives the mask ${Array.from({ length: G }, (_, j) => (match.includes(j) ? 1 : 0)).reverse().join("")}: ${match.length ? `slot${match.length > 1 ? "s" : ""} ${match.map((j) => g * G + j).join(", ")} may hold the key.` : "no slot can hold the key."}` });
+        for (const j of match) {
+          const s = g * G + j;
+          if (keys[s] === target) {
+            frames.push({ group: g, match, found: s, cap: `Slot ${s} holds key ${target}: found, after comparing ${frames.filter((x) => x.compared != null).length + 1} key${frames.filter((x) => x.compared != null).length ? "s" : ""}.` });
+            return frames;
+          }
+          frames.push({ group: g, match, compared: s, cap: `Slot ${s} holds key ${keys[s]}, not ${target}: a false match, which happens with probability 1/128 per full slot.` });
+        }
+        if (empty) {
+          frames.push({ group: g, match, stop: true, cap: `Group ${g} has an empty slot, so the search stops: key ${target} is not in the table. If it were, it would be in this group or before it.` });
+          return frames;
+        }
+        frames.push({ group: g, match, next: true, cap: `Group ${g} is full (no empty slot), so the key may be in a later group: the search jumps ${step} group${step > 1 ? "s" : ""} on, to group ${(g + step) % GROUPS}.` });
+        g = (g + step) % GROUPS;
+      }
+      return frames;
+    }
+    const ui = frame(fig, { title: "A lookup in a Swiss table", kicker: "Animation" });
+    ui.stage.classList.add("is-plain");
+    const box = h("div", { class: "st-swiss" });
+    ui.stage.appendChild(box);
+    const tools = toolbar(ui);
+    toggle(tools, "Look up", [["present", "a key in the table"], ["missing", "a missing key"], ["behind", "a key behind a full group"]], "present", (v) => {
+      target = v === "present" ? present : v === "missing" ? missing : behind;
+      player.setFrames(make());
+    });
+    const player = new Player(fig, {
+      frames: make(), interval: 1700,
+      apply: (f) => {
+        box.textContent = "";
+        const hh = hashOf(target);
+        box.append(h("div", { class: "st-swiss-key" }, h("span", { text: `key ${target}` }), h("span", { text: "→" }), h("b", { text: `H1 → group ${H1(hh)}` }), h("b", { text: `H2 = ${H2(hh)}` })));
+        for (let g = 0; g < GROUPS; g++) {
+          const vals = ctrl.slice(g * G, g * G + G).map((c) => (c < 0 ? "–" : String(c)));
+          box.append(cells(vals, (j) => {
+            const s = g * G + j;
+            if (f.found === s) return "is-hit";
+            if (f.compared === s) return "is-bad";
+            if (g === f.group && f.match && f.match.includes(j)) return "is-cur";
+            if (ctrl[s] < 0) return "is-empty";
+            return g === f.group ? "" : "is-dim";
+          }, `group ${g}`));
+        }
+        ui.setCaption(f.cap);
+      },
+    });
+  });
+
+  /* ------------------------------------------------- hash flooding */
+  register("hash-flooding", (fig) => {
+    const BUCKETS = 64, KEYS = 256;
+    let hash = "identity", shift = 8;
+    const sup = (n) => String(n).replace(/\d/g, (d) => "⁰¹²³⁴⁵⁶⁷⁸⁹"[d]);
+    const ui = frame(fig, { title: "Hash flooding", kicker: "Try it" });
+    ui.stage.classList.add("is-plain");
+    const W = 560, H = 210, M = { l: 34, r: 10, t: 14, b: 30 };
+    const svg = svgBox(ui.stage, W, H, "st-chart");
+    const tools = toolbar(ui);
+    toggle(tools, "Hash", [["identity", "the identity"], ["mix", "a mixing hash"]], hash, (v) => { hash = v; draw(); });
+    slider(tools, "Keys i · 2ᵏ, k =", { min: 0, max: 12, step: 1, value: shift, format: (v) => String(v) }, (v) => { shift = v; draw(); });
+    function draw() {
+      const load = new Array(BUCKETS).fill(0);
+      for (let i = 0; i < KEYS; i++) {
+        const key = i * 2 ** shift;
+        load[(hash === "identity" ? key : mix32(key)) % BUCKETS]++;
+      }
+      const max = Math.max(...load);
+      svg.textContent = "";
+      const Y = (v) => H - M.b - (v / Math.max(8, max)) * (H - M.t - M.b);
+      for (const v of [0, Math.max(8, max)]) { seg(svg, M.l, Y(v), W - M.r, Y(v), "st-grid"); label(svg, M.l - 6, Y(v), String(v), "st-tick", "end"); }
+      const bw = (W - M.l - M.r) / BUCKETS;
+      load.forEach((v, b) => rect(svg, M.l + b * bw + 1, Y(v), bw - 2, Y(0) - Y(v), `st-bar ${hash === "identity" && max > 16 ? "c4" : "c5"}`, 1));
+      label(svg, (M.l + W - M.r) / 2, H - 8, `the ${BUCKETS} buckets of a table whose size is a power of two`, "st-axis");
+      // a lookup in a chained bucket compares (load + 1) / 2 keys on average for a key in the table
+      const work = load.reduce((a, v) => a + (v * (v + 1)) / 2, 0) / KEYS;
+      ui.setCaption(hash === "identity"
+        ? `${KEYS} keys i · 2${sup(shift)} and the identity as the hash: the bucket is the low 6 bits of the key, and ${shift >= 6 ? "they are all 0" : `only the low ${6 - shift} bits can differ`}. The fullest bucket has ${max} keys; a lookup compares ${work.toFixed(1)} keys on average.${shift >= 6 ? " Every insert walks over all earlier keys: the time grows with the square of the number of keys." : ""}`
+        : `The same ${KEYS} keys with a mixing hash: every bit of the key changes about half of the bits of the hash, so the buckets fill evenly. The fullest bucket has ${max} keys; a lookup compares ${work.toFixed(1)} keys on average.`);
+    }
+    draw();
+  });
+
+  /* ------------------------------------------------- consistent hashing */
+  register("hash-ring", (fig) => {
+    const KEYS = Array.from({ length: 120 }, (_, i) => mix32(i * 7919 + 13));
+    let servers = [0, 1, 2, 3], vnodes = 4, moved = new Set(), modMoved = 0, lastChange = null, nextId = 4;
+    const tokens = () => servers.flatMap((s) => Array.from({ length: vnodes }, (_, v) => ({ t: mix32((s + 1) * 1000003 + v * 7777), s }))).sort((a, b) => a.t - b.t);
+    function owners() {
+      const ts = tokens();
+      return KEYS.map((k) => {
+        let lo = 0, hi = ts.length;
+        while (lo < hi) { const mid = (lo + hi) >> 1; if (ts[mid].t < k) lo = mid + 1; else hi = mid; }
+        return ts[lo === ts.length ? 0 : lo].s;
+      });
+    }
+    const ui = frame(fig, { title: "Consistent hashing", kicker: "Try it", split: true });
+    ui.stage.classList.add("is-plain");
+    const W = 320, H = 320, C = 160, R = 120;
+    const svg = svgBox(ui.stage, W, H, "st-ring");
+    const side = h("div", { class: "st-side" });
+    ui.side.appendChild(side);
+    const tools = toolbar(ui);
+    function change(f) {
+      const before = owners(), n0 = servers.length;
+      const what = f();
+      const after = owners();
+      moved = new Set(after.map((o, i) => (o !== before[i] ? i : -1)).filter((i) => i >= 0));
+      modMoved = KEYS.filter((k) => k % n0 !== k % servers.length).length;
+      lastChange = what;
+      draw();
+    }
+    button(tools, "Add a server", () => {
+      if (servers.length >= 6) { ui.setCaption("At most 6 servers in this picture."); return; }
+      change(() => { const s = [0, 1, 2, 3, 4, 5].find((x) => !servers.includes(x)); servers.push(s); return `Server ${s} joined`; });
+    });
+    button(tools, "Remove a server", () => {
+      if (servers.length <= 2) { ui.setCaption("Keep at least 2 servers."); return; }
+      change(() => { const s = servers.splice(Math.floor(servers.length / 2), 1)[0]; return `Server ${s} left`; });
+    });
+    slider(tools, "Virtual nodes", { min: 0, max: 5, step: 1, value: 2, format: (v) => String(2 ** v) }, (v) => { vnodes = 2 ** v; moved = new Set(); lastChange = null; draw(); });
+    function draw() {
+      svg.textContent = "";
+      s("circle", { cx: C, cy: C, r: R, class: "st-dial" }, svg);
+      const ang = (t) => (t / 4294967296) * 2 * Math.PI;
+      const at = (t, r) => [C + r * Math.sin(ang(t)), C - r * Math.cos(ang(t))];
+      const own = owners();
+      KEYS.forEach((k, i) => {
+        const [x, y] = at(k, R - 14);
+        s("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: moved.has(i) ? 4.5 : 3.2, class: `st-keydot c${own[i] % 6}${moved.has(i) ? " is-moved" : ""}` }, svg);
+      });
+      for (const { t, s: srv } of tokens()) {
+        const [x1, y1] = at(t, R - 4), [x2, y2] = at(t, R + 10);
+        seg(svg, x1, y1, x2, y2, `st-token c${srv % 6}`);
+      }
+      label(svg, C, C - 8, `${servers.length} servers`, "st-axis");
+      label(svg, C, C + 10, `${vnodes} point${vnodes > 1 ? "s" : ""} each`, "st-tick");
+      const load = servers.map((srv) => own.filter((o) => o === srv).length);
+      const mean = KEYS.length / servers.length;
+      side.textContent = "";
+      side.append(panel("keys per server", `mean ${mean.toFixed(0)}`, h("div", { class: "st-loads" },
+        ...servers.map((srv, i) => h("div", { class: "st-load" }, h("span", { text: `server ${srv}` }),
+          h("i", { class: `c${srv % 6}`, style: `width:${Math.min(100, (load[i] / (2 * mean)) * 100).toFixed(0)}%` }), h("b", { text: String(load[i]) }))))));
+      const max = Math.max(...load);
+      ui.setCaption(lastChange
+        ? `${lastChange}: ${moved.size} of ${KEYS.length} keys moved (the larger dots), all of them ${lastChange.includes("joined") ? "to the new server" : "from the server that left"}. With hash % n, ${modMoved} keys would have moved.`
+        : `Each server has ${vnodes} point${vnodes > 1 ? "s" : ""} on the ring, and a key belongs to the first point at or after it, clockwise. The busiest server has ${max} keys, ${(max / mean).toFixed(2)} times the mean: more virtual nodes make the loads more equal.`);
+    }
+    draw();
   });
 })();

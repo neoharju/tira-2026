@@ -1067,3 +1067,96 @@ html.dark .vz-node.wall .vz-shape { fill: #2c3146; stroke: #2c3146; }
 
 .viz-tools .st-slider { flex: 0 1 8.5rem; min-width: 6rem; }
 .viz-tools .st-val { min-width: 2.6rem; color: var(--fg); font-family: var(--vz-mono); }
+
+/* ============ Part IV, chapters 27–28 (viz-storage.js): pages, caches, hash tables ============ */
+
+/* colors by slot, server or key: c0 ... c5 */
+.st-cell.c0 { border-color: var(--vz-c0); background: color-mix(in srgb, var(--vz-c0) 14%, var(--bg-elev)); }
+.st-cell.c1 { border-color: var(--vz-c1); background: color-mix(in srgb, var(--vz-c1) 14%, var(--bg-elev)); }
+.st-cell.c2 { border-color: var(--vz-c2); background: color-mix(in srgb, var(--vz-c2) 14%, var(--bg-elev)); }
+.st-cell.c3 { border-color: var(--vz-c3); background: color-mix(in srgb, var(--vz-c3) 16%, var(--bg-elev)); }
+.st-cell.c4 { border-color: var(--vz-c4); background: color-mix(in srgb, var(--vz-c4) 14%, var(--bg-elev)); }
+.st-cell.c5 { border-color: var(--vz-c5); background: color-mix(in srgb, var(--vz-c5) 14%, var(--bg-elev)); }
+.st-cell.is-empty { border-style: dashed; background: none; color: var(--fg-faint); }
+.st-bar.c4 { fill: var(--vz-c4); }
+.st-axis-name { fill: var(--fg); font: 650 12px var(--font-sans); dominant-baseline: central; }
+
+/* the slotted page */
+.st-svg.st-page-svg { max-width: 680px; }
+.st-pg-free { fill: var(--bg-elev); stroke: var(--vz-node-stroke); stroke-width: 1; }
+.st-pg-header { fill: color-mix(in srgb, var(--fg-faint) 45%, var(--vz-node)); }
+.st-pg-slot.is-free { fill: none; stroke: var(--fg-faint); stroke-width: .8; stroke-dasharray: 2 1.5; }
+.st-pg-slot.c0, .st-pg-rec.c0 { fill: var(--vz-c0); } .st-pg-slot.c1, .st-pg-rec.c1 { fill: var(--vz-c1); }
+.st-pg-slot.c2, .st-pg-rec.c2 { fill: var(--vz-c2); } .st-pg-slot.c3, .st-pg-rec.c3 { fill: var(--vz-c3); }
+.st-pg-slot.c4, .st-pg-rec.c4 { fill: var(--vz-c4); } .st-pg-slot.c5, .st-pg-rec.c5 { fill: var(--vz-c5); }
+.st-pg-rec { opacity: .85; }
+.st-pg-garbage { fill: color-mix(in srgb, var(--fg-faint) 30%, transparent); stroke: var(--fg-faint); stroke-width: .6; stroke-dasharray: 3 2; }
+.st-pg-lbl { fill: var(--vz-on); font: 750 11px var(--font-sans); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.st-slotlist { margin-top: .4rem; overflow-x: auto; }
+.st-slotlist .st-cells { flex-wrap: wrap; }
+.st-slotlist .st-cell { min-width: 4.6rem; font-size: .7rem; }
+
+/* the buffer pool */
+.st-svg.st-pool { max-width: 440px; }
+.st-dial { fill: none; stroke: var(--border); stroke-width: 1.2; stroke-dasharray: 3 4; }
+.st-hand { stroke: var(--vz-cur); stroke-width: 3; stroke-linecap: round; transition: all .4s; }
+.st-hand-hub { fill: var(--vz-cur); }
+.st-frame { fill: var(--vz-node); stroke: var(--vz-node-stroke); stroke-width: 1.4; transition: fill .3s, stroke .3s; }
+.st-frame.is-pinned { stroke: var(--vz-c1); stroke-width: 2.2; }
+.st-frame.is-cur { fill: var(--vz-cur-fill); stroke: var(--vz-cur); stroke-width: 2.6; }
+.st-frame.is-victim { fill: color-mix(in srgb, var(--vz-c0) 18%, var(--vz-node)); stroke: var(--vz-c0); stroke-width: 2.6; }
+.st-frame-lbl { fill: var(--vz-node-text); font: 700 12px var(--font-sans); text-anchor: middle; dominant-baseline: central; }
+.st-refbit { fill: none; stroke: var(--fg-faint); stroke-width: 1.2; }
+.st-refbit.is-on { fill: var(--vz-ok); stroke: var(--vz-ok); }
+.st-mini { fill: var(--fg-mute); font: 650 9.5px var(--font-sans); dominant-baseline: central; }
+.st-mini.is-pin { fill: var(--vz-c1); }
+.st-mini.is-dirty { fill: var(--vz-c0); font-weight: 750; }
+.st-mini.is-clear { fill: var(--vz-warn); }
+.st-reqs { margin-top: .4rem; overflow-x: auto; }
+.st-reqs .st-cell { min-width: 1.9rem; }
+.st-note { margin: 0; color: var(--fg-mute); font-size: .74rem; }
+
+/* the Count-Min sketch, W-TinyLFU, open addressing, the Swiss table */
+.st-cm, .st-wtl, .st-oa, .st-swiss { display: grid; justify-content: safe center; gap: 3px; padding: .25rem 0; overflow-x: auto; }
+.st-cm .st-cell { min-width: 1.75rem; }
+.st-cm-keys { display: grid; gap: 3px; margin-top: .6rem; }
+.st-cm-keys .st-cell { min-width: 2.2rem; }
+.st-wtl { gap: 6px; }
+.st-wtl .st-cell { min-width: 3.2rem; }
+.st-cell.is-cand { border-color: var(--vz-c0); background: color-mix(in srgb, var(--vz-c0) 16%, var(--bg-elev)); }
+.st-cell.is-victim { border-color: var(--vz-done); background: var(--vz-done-soft); }
+.st-evicted { display: inline-flex; gap: .5rem; justify-self: start; margin-left: 4.6rem; color: var(--fg-mute); font-size: .76rem; }
+.st-evicted b { color: var(--vz-bad); font-family: var(--vz-mono); text-decoration: line-through; }
+.st-oa .st-cell { min-width: 1.8rem; padding-inline: .05rem; font-size: .7rem; }
+.st-oa .st-rowname { min-width: 4.6rem; font-size: .66rem; }
+.st-cell.is-dist { border: none; background: none; color: var(--fg-mute); font-size: .66rem; padding-block: 0 .3rem; }
+.st-cell.d0 { border-color: var(--vz-ok); background: var(--vz-ok-soft); }
+.st-cell.d1 { border-color: color-mix(in srgb, var(--vz-ok) 50%, var(--vz-c3)); background: color-mix(in srgb, var(--vz-c3) 12%, var(--bg-elev)); }
+.st-cell.d2 { border-color: var(--vz-c3); background: color-mix(in srgb, var(--vz-c3) 22%, var(--bg-elev)); }
+.st-cell.d3 { border-color: var(--vz-c0); background: color-mix(in srgb, var(--vz-c0) 20%, var(--bg-elev)); }
+.st-cell.d4 { border-color: var(--vz-bad); background: var(--vz-bad-soft); }
+.st-cell.is-walk { box-shadow: 0 0 0 2px var(--vz-cur); }
+.st-swiss .st-cell { min-width: 1.85rem; font-size: .7rem; }
+.st-swiss-key { display: flex; flex-wrap: wrap; align-items: baseline; gap: .6rem; margin-bottom: .35rem; color: var(--fg-mute); font-size: .8rem; }
+.st-swiss-key b { color: var(--fg); font-family: var(--vz-mono); }
+
+/* the hash ring */
+.st-svg.st-ring { max-width: 340px; }
+.st-keydot { stroke: var(--vz-bg); stroke-width: .8; }
+.st-keydot.c0 { fill: var(--vz-c0); } .st-keydot.c1 { fill: var(--vz-c1); } .st-keydot.c2 { fill: var(--vz-c2); }
+.st-keydot.c3 { fill: var(--vz-c3); } .st-keydot.c4 { fill: var(--vz-c4); } .st-keydot.c5 { fill: var(--vz-c5); }
+.st-keydot.is-moved { stroke: var(--fg); stroke-width: 1.6; }
+.st-token { stroke-width: 2.6; stroke-linecap: round; }
+.st-token.c0 { stroke: var(--vz-c0); } .st-token.c1 { stroke: var(--vz-c1); } .st-token.c2 { stroke: var(--vz-c2); }
+.st-token.c3 { stroke: var(--vz-c3); } .st-token.c4 { stroke: var(--vz-c4); } .st-token.c5 { stroke: var(--vz-c5); }
+.st-loads { display: grid; gap: .3rem; padding: .55rem .7rem; }
+.st-load { display: grid; grid-template-columns: 4.2rem 1fr 2rem; align-items: center; gap: .5rem; color: var(--fg-mute); font-size: .76rem; }
+.st-load i { display: block; height: .7rem; border-radius: 3px; }
+.st-load i.c0 { background: var(--vz-c0); } .st-load i.c1 { background: var(--vz-c1); } .st-load i.c2 { background: var(--vz-c2); }
+.st-load i.c3 { background: var(--vz-c3); } .st-load i.c4 { background: var(--vz-c4); } .st-load i.c5 { background: var(--vz-c5); }
+.st-load b { color: var(--fg); font-family: var(--vz-mono); text-align: right; }
+@container viz (max-width: 520px) {
+  .st-cm .st-cell, .st-oa .st-cell, .st-swiss .st-cell { min-width: 1.45rem; font-size: .62rem; }
+  .st-oa .st-rowname, .st-swiss .st-rowname, .st-cm .st-rowname { min-width: 3.4rem; font-size: .64rem; }
+  .st-wtl .st-cell { min-width: 2.4rem; font-size: .66rem; }
+}
