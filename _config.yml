@@ -72,7 +72,7 @@ defaults:
       type: material_4
     values:
       lang: en
-      viz: []
+      viz: [storage]
   - scope:
       path: ""
       type: material_5

@@ -13,6 +13,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3 -g -DNDEBUG")  # -g lets perf and gdb show sour
 add_compile_options(-march=x86-64-v3 -Wall -Wextra -Wpedantic -Wshadow)
 
 set(TIRA_SANITIZE "" CACHE STRING "Sanitizers to build with, for example address;undefined or thread")
+option(TIRA_FUZZ "Build the libFuzzer targets (with Clang; the fuzz preset)" OFF)
 if(TIRA_SANITIZE)
   list(JOIN TIRA_SANITIZE "," sanitizers)
   add_compile_options(-fsanitize=${sanitizers} -fno-omit-frame-pointer)
@@ -20,8 +21,13 @@ if(TIRA_SANITIZE)
   if("undefined" IN_LIST TIRA_SANITIZE)
     add_compile_options(-fno-sanitize-recover=undefined)  # stop at the first error
   endif()
-  if("thread" IN_LIST TIRA_SANITIZE)
-    add_compile_options(-O1)  # ThreadSanitizer is very slow without optimization
+  if("thread" IN_LIST TIRA_SANITIZE OR "fuzzer-no-link" IN_LIST TIRA_SANITIZE)
+    add_compile_options(-O1)  # ThreadSanitizer and fuzzing are very slow without optimization
+  endif()
+  if("fuzzer-no-link" IN_LIST TIRA_SANITIZE AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    # With AddressSanitizer at -O1, Clang cannot vectorize some `omp simd`
+    # loops, and it warns about each of them. Speed does not matter when fuzzing.
+    add_compile_options(-Wno-pass-failed)
   endif()
 endif()
 
@@ -67,3 +73,5 @@ add_subdirectory(week21)
 add_subdirectory(week22)
 add_subdirectory(week23)
 add_subdirectory(week24)
+add_subdirectory(week25)
+add_subdirectory(week26)

@@ -1,6 +1,6 @@
 # Code for Parts III–V
 
-This folder has the starting code for the tasks of weeks 17–24: one file per
+This folder has the starting code for the tasks of weeks 17–26: one file per
 task, tests for every task, and benchmarks with the speed goals. The task
 descriptions are in the course material.
 
@@ -11,9 +11,10 @@ descriptions are in the course material.
 - GCC 16, CMake 3.25 or newer, and gdb. GCC 14 and 15 also compile the
   code, but the speed goals were measured with GCC 16, and other compilers
   give other speedups (week 18 has an example). Measure with GCC 16.
-- For the `tsan` preset: Clang with LLVM's OpenMP runtime and its sanitizer
-  libraries.
-- For AVX-512 code (week 18, task 5) on a computer without AVX-512:
+- For the `tsan` and `fuzz` presets: Clang with LLVM's OpenMP runtime and its
+  sanitizer libraries, which include libFuzzer.
+- For AVX-512 code (week 18 task 5, week 25 task 5, week 26 task 7) on a
+  computer without AVX-512:
   [Intel SDE](https://www.intel.com/content/www/us/en/developer/articles/tool/software-development-emulator.html),
   which runs a program as if the CPU had AVX-512 (slowly, so only for testing).
 
@@ -45,12 +46,13 @@ without further settings.
 
 ## Building and testing
 
-There are three build presets:
+There are four build presets:
 
 | Preset | What it is for |
 | --- | --- |
 | `debug` | Writing code. AddressSanitizer and UndefinedBehaviorSanitizer stop the program at the first memory error or undefined behaviour. |
 | `tsan` | Parallel code. ThreadSanitizer reports data races. Uses Clang. |
+| `fuzz` | Fuzzing with libFuzzer (from week 26), with AddressSanitizer and UndefinedBehaviorSanitizer. Uses Clang. |
 | `release` | Measuring. Full optimization, plus debug information for `perf` and gdb. |
 
 ```bash
@@ -65,8 +67,8 @@ cmake --build --preset debug
 ctest --preset debug
 ```
 
-The same three commands work with `release`. The `tsan` preset always uses
-Clang, so configure it without `-DCMAKE_CXX_COMPILER`. Without that option,
+The same three commands work with `release`. The `tsan` and `fuzz` presets
+always use Clang, so configure them without `-DCMAKE_CXX_COMPILER`. Without that option,
 `debug` and `release` use your default C++ compiler (GCC 13 on Ubuntu 24.04,
 which is too old). CMake remembers the compiler in the build folder, so the
 option is needed only the first time; to change the compiler of a folder that
@@ -82,6 +84,22 @@ or the test program directly, which shows more detail:
 
 ```bash
 ./build/debug/week17/w17_test -tc="task3*"
+```
+
+Fuzz a week's code (week 26 has a fuzz target) for a minute; the inputs that
+libFuzzer finds interesting are kept in the folder `corpus`, and an input
+that breaks your code is saved as a `crash-...` file that you can run again:
+
+```bash
+cmake --preset fuzz && cmake --build --preset fuzz --target w26_fuzz
+```
+
+```bash
+mkdir -p corpus && ./build/fuzz/week26/w26_fuzz -max_total_time=60 corpus
+```
+
+```bash
+./build/fuzz/week26/w26_fuzz crash-...
 ```
 
 ## Speed goals
@@ -119,6 +137,9 @@ hardware thread). Close other programs when you measure.
 | 22 | 7 | `week22/task6_pull_parallel.cpp` |
 | 23 | 1–8 | `week23/task1_distance.cpp` … `week23/task8_batch.cpp` (task 6 has three functions) |
 | 24 | 1–8 | `week24/task1_select.cpp` … `week24/task8_settings.cpp` |
+| 25 | 1–8 | `week25/task1_eytzinger.cpp` … `week25/task8_parallel_build.cpp` |
+| 26 | 1–4, 6–8 | `week26/task1_find.cpp` … `week26/task4_erase.cpp`, `week26/task6_node_avx2.cpp` … `week26/task8_bulk_load.cpp` |
+| 26 | 5 | `week26/task5_fuzz.hpp` (a template, used by the tests and by `fuzz.cpp`) |
 
 `tasks.hpp` in each week's folder says what each function must do. Do not
 change the tests, the baselines or the benchmarks: the grader uses its own
@@ -133,6 +154,6 @@ the SNAP web graph web-Google if you download it with
 `tools/download_snap.sh`; otherwise a generated web graph of the same size.
 Weeks 23 and 24 use the first vectors of SIFT1M if you download it with
 `tools/download_sift.sh`; otherwise SIFT-like generated vectors (200,000 for
-week 23 and 100,000 for week 24).
+week 23 and 100,000 for week 24). Weeks 25 and 26 use generated keys.
 
 Keep your solutions private: do not put them in a public repository.

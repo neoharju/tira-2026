@@ -14,6 +14,17 @@
       "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "CMAKE_CXX_COMPILER": "clang++", "TIRA_SANITIZE": "thread" }
     },
     {
+      "name": "fuzz",
+      "displayName": "Fuzzing: libFuzzer + AddressSanitizer + UndefinedBehaviorSanitizer (Clang)",
+      "binaryDir": "${sourceDir}/build/fuzz",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "TIRA_SANITIZE": "address;undefined;fuzzer-no-link",
+        "TIRA_FUZZ": "ON"
+      }
+    },
+    {
       "name": "release",
       "displayName": "Release: optimized, for measuring",
       "binaryDir": "${sourceDir}/build/release",
@@ -23,6 +34,7 @@
   "buildPresets": [
     { "name": "debug", "configurePreset": "debug" },
     { "name": "tsan", "configurePreset": "tsan" },
+    { "name": "fuzz", "configurePreset": "fuzz" },
     { "name": "release", "configurePreset": "release" }
   ],
   "testPresets": [
