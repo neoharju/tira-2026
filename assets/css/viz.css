@@ -795,3 +795,131 @@ html.dark .vz-node.wall .vz-shape { fill: #2c3146; stroke: #2c3146; }
 .wb-spy { display: block; width: 100%; max-width: 330px; height: auto; border: 1px solid var(--border); border-radius: 8px; }
 .wb-spy-bg { fill: var(--bg-elev); }
 .wb-spy-dots { fill: var(--vz-c5); }
+
+/* ============ Part III, chapters 23–24 (viz-vector.js): vector search ============ */
+
+/* drawings in the plane */
+.vx-plot { display: block; width: 100%; max-width: 600px; height: auto; margin: 0 auto; }
+.vx-plot.vx-layers { max-width: 780px; }
+.vx-plot.vx-time, .vx-plot.vx-chart { max-width: 680px; }
+.vx-frame { fill: none; stroke: var(--border); stroke-width: 1; }
+.vx-axis { stroke: var(--vz-grid); stroke-width: 1.3; }
+.vx-grid { stroke: var(--vz-grid); stroke-width: 1; }
+.vx-tick { fill: var(--fg-mute); font: 600 11px var(--font-sans); dominant-baseline: central; }
+.vx-tick.is-big { font-size: 14px; }
+.vx-axis-label { fill: var(--fg-mute); font: 650 11.5px var(--font-sans); text-anchor: middle; }
+.vx-axis-label.is-on { fill: var(--vz-cur); }
+.vx-pt { fill: var(--vz-node); stroke: var(--vz-node-stroke); stroke-width: 1.4; }
+.vx-pt.is-near { fill: var(--vz-ok); stroke: var(--vz-ok); }
+.vx-pt.is-miss { fill: var(--vz-bad); stroke: var(--vz-bad); }
+.vx-pt.is-cur { fill: var(--vz-cur); stroke: var(--vz-cur); }
+.vx-pt.is-seen { fill: var(--vz-cur-fill); stroke: var(--vz-cur); }
+.vx-pt.is-cand { fill: var(--vz-node); stroke: var(--vz-cur); stroke-width: 2.2; }
+.vx-pt.is-res { fill: var(--vz-done); stroke: var(--vz-done); }
+.vx-pt.is-path { fill: var(--vz-c3); stroke: var(--vz-c3); }
+.vx-pt.is-faint { opacity: .35; }
+.vx-pt.c0 { fill: var(--vz-c0); stroke: var(--vz-c0); } .vx-pt.c1 { fill: var(--vz-c1); stroke: var(--vz-c1); }
+.vx-pt.c2 { fill: var(--vz-c2); stroke: var(--vz-c2); } .vx-pt.c3 { fill: var(--vz-c3); stroke: var(--vz-c3); }
+.vx-pt.c4 { fill: var(--vz-c4); stroke: var(--vz-c4); } .vx-pt.c5 { fill: var(--vz-c5); stroke: var(--vz-c5); }
+.vx-ptlbl { fill: var(--vz-node-text); font: 700 8.5px var(--font-sans); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.vx-pt.is-near + .vx-ptlbl, .vx-pt.is-miss + .vx-ptlbl { fill: var(--vz-on); }
+.vx-idlbl { fill: var(--fg-mute); font: 650 9.5px var(--vz-mono); }
+.vx-q { fill: var(--fg); stroke: var(--vz-bg); stroke-width: 1.5; }
+.vx-ring { fill: none; stroke: var(--vz-ok); stroke-width: 1.4; stroke-dasharray: 5 4; }
+.vx-mark { fill: none; stroke-width: 2.2; }
+.vx-mark.is-ok { stroke: var(--vz-ok); }
+.vx-mark.is-bad { stroke: var(--vz-bad); }
+.vx-link { stroke: var(--vz-edge); stroke-width: 1.6; }
+.vx-link.is-ok { stroke: var(--vz-ok); stroke-width: 2.2; }
+.vx-link.is-bad { stroke: var(--vz-bad); stroke-width: 2; stroke-dasharray: 4 3; }
+.vx-link.is-faint { opacity: .7; stroke-dasharray: 3 3; }
+.vx-ray { stroke: var(--fg-faint); stroke-width: 1.2; stroke-dasharray: 2 4; }
+.vx-level { stroke: var(--vz-warn); stroke-width: 1.5; stroke-dasharray: 6 4; }
+.vx-edge { stroke: var(--vz-edge); stroke-width: 1; opacity: .75; }
+.vx-edge.is-act { stroke: var(--vz-cur); stroke-width: 2.2; opacity: 1; }
+.vx-path { stroke: var(--vz-c3); stroke-width: 2.6; stroke-linecap: round; }
+.vx-down { fill: none; stroke: var(--fg-faint); stroke-width: 1.8; stroke-linecap: round; }
+.vx-layer { fill: none; stroke: var(--border); stroke-width: 1; }
+.vx-layer.is-on { stroke: var(--vz-cur); stroke-width: 1.6; fill: color-mix(in srgb, var(--vz-cur) 5%, transparent); }
+
+/* k-d tree, k-means and IVF */
+.vx-split { stroke: var(--vz-c1); stroke-width: 1.6; }
+.vx-split.is-new { stroke: var(--vz-cur); stroke-width: 2.8; }
+.vx-box { fill: var(--vz-cur-soft); stroke: var(--vz-cur); stroke-width: 1.4; }
+.vx-box.is-skip { fill: none; stroke: var(--fg-faint); stroke-dasharray: 4 3; }
+.vx-pruned { fill: color-mix(in srgb, var(--fg-faint) 24%, transparent); }
+.vx-move { stroke: var(--fg-faint); stroke-width: 1.4; stroke-dasharray: 3 3; }
+.vx-centroid { fill: none; stroke: var(--fg); stroke-width: 3.2; stroke-linecap: round; }
+.vx-cellbg { opacity: .06; } .vx-cellbg.is-on { opacity: .2; }
+.vx-cellbg.c0 { fill: var(--vz-c0); } .vx-cellbg.c1 { fill: var(--vz-c1); } .vx-cellbg.c2 { fill: var(--vz-c2); }
+.vx-cellbg.c3 { fill: var(--vz-c3); } .vx-cellbg.c4 { fill: var(--vz-c4); } .vx-cellbg.c5 { fill: var(--vz-c5); }
+
+/* timelines */
+.vx-op.c0 { fill: var(--vz-c0); } .vx-op.c1 { fill: var(--vz-c1); } .vx-op.c2 { fill: var(--vz-c2); }
+.vx-op.c3 { fill: var(--vz-c3); } .vx-op.c4 { fill: var(--vz-c4); } .vx-op.c5 { fill: var(--vz-c5); }
+.vx-op-lbl { fill: var(--vz-on); font: 700 9.5px var(--font-sans); text-anchor: middle; dominant-baseline: central; }
+.vx-wait { fill: color-mix(in srgb, var(--fg-faint) 50%, transparent); }
+.vx-end { stroke: var(--vz-bad); stroke-width: 1.6; stroke-dasharray: 4 3; }
+
+/* SimHash */
+.vx-plane { stroke: var(--vz-grid); stroke-width: 1.2; }
+.vx-plane.is-diff { stroke: var(--vz-bad); stroke-width: 1.5; opacity: .7; }
+.vx-arrow { stroke-width: 2.6; stroke-linecap: round; }
+.vx-arrow.c5, .vx-name.c5 { stroke: var(--vz-c5); } .vx-tip.c5, .vx-name.c5 { fill: var(--vz-c5); }
+.vx-arrow.c0, .vx-name.c0 { stroke: var(--vz-c0); } .vx-tip.c0, .vx-name.c0 { fill: var(--vz-c0); }
+.vx-name { stroke: none !important; font: 700 13px var(--font-sans); }
+.vx-tip { cursor: grab; }
+.vx-bits { display: grid; gap: 3px; margin-top: .45rem; }
+.vx-bits .vx-cell { min-width: 1.1rem; padding: .12rem 0; font-size: .68rem; }
+
+/* recall and speed */
+.vx-curve { fill: none; stroke-width: 2.2; }
+.vx-curve.c0 { stroke: var(--vz-c0); } .vx-curve.c1 { stroke: var(--vz-c1); } .vx-curve.c2 { stroke: var(--vz-c2); } .vx-curve.c5 { stroke: var(--vz-c5); }
+.vx-cdot.c0 { fill: var(--vz-c0); } .vx-cdot.c1 { fill: var(--vz-c1); } .vx-cdot.c2 { fill: var(--vz-c2); } .vx-cdot.c5 { fill: var(--vz-c5); }
+.vx-cdot.is-pick { stroke: var(--fg); stroke-width: 2; }
+.vx-need { stroke: var(--vz-warn); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.vx-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: .25rem .9rem; margin-top: .35rem; color: var(--fg-mute); font-size: .76rem; }
+.vx-key::before { content: ""; display: inline-block; width: .85rem; height: .24rem; margin-right: .35rem; border-radius: 2px; vertical-align: middle; }
+.vx-key.c0::before { background: var(--vz-c0); } .vx-key.c1::before { background: var(--vz-c1); }
+.vx-key.c2::before { background: var(--vz-c2); } .vx-key.c5::before { background: var(--vz-c5); }
+
+/* rows of cells, lists and chips */
+.vx-cells { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; font: 600 .78rem/1.3 var(--vz-mono); font-variant-numeric: tabular-nums; }
+.vx-rowname { flex: none; min-width: 3.4rem; color: var(--fg-mute); font: 650 .74rem var(--font-sans); }
+.vx-cell { min-width: 2.1rem; padding: .28rem .2rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-elev); color: var(--fg); text-align: center; transition: background .3s, border-color .3s; }
+.vx-cell.is-cur { border-color: var(--vz-cur); background: var(--vz-cur-soft); }
+.vx-cell.is-done { border-color: var(--vz-done); background: var(--vz-done-soft); }
+.vx-cell.is-hit { border-color: var(--vz-ok); background: var(--vz-ok-soft); color: var(--vz-ok); }
+.vx-cell.is-hl { border-color: var(--vz-c3); background: color-mix(in srgb, var(--vz-c3) 15%, var(--bg-elev)); }
+.vx-cell.is-bad { border-color: var(--vz-bad); background: var(--vz-bad-soft); color: var(--vz-bad); }
+.vx-cell.is-empty { border-style: dashed; background: none; }
+.vx-cell.vx-idx { border-style: dotted; color: var(--fg-mute); }
+.vx-cell.vx-gap { margin-right: .45rem; }
+.vx-lists { display: grid; gap: .5rem; }
+.vx-chips { display: flex; flex-wrap: wrap; gap: 4px; padding: .45rem .6rem; }
+.vx-chip { display: inline-flex; gap: .3rem; padding: .16rem .45rem; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-elev); color: var(--fg-mute); font: 600 .74rem var(--vz-mono); }
+.vx-chip b { color: var(--fg); }
+.vx-chip.is-res { border-color: var(--vz-done); background: var(--vz-done-soft); }
+.vx-chip.is-cur { border-color: var(--vz-cur); background: var(--vz-cur-soft); }
+.vx-empty { display: block; padding: .45rem .6rem; color: var(--fg-faint); font-size: .76rem; }
+.viz-tools .vx-slider { flex: 0 1 8.5rem; min-width: 6rem; }
+.viz-tools .vx-val { min-width: 3.4rem; color: var(--fg); font-family: var(--vz-mono); }
+
+/* product quantization and fast scan */
+.vx-pq, .vx-fs { display: grid; gap: .55rem; }
+.vx-pq .viz-panel > .vx-table, .vx-fs .viz-panel > .vx-cells { margin: .45rem .6rem; }
+.vx-table { display: grid; gap: 3px; }
+.vx-books { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .45rem; }
+@container viz (max-width: 480px) {
+  .vx-books { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.vx-bookbox { display: grid; justify-items: center; gap: .1rem; }
+.vx-book { display: block; width: 100%; max-width: 150px; height: auto; }
+.vx-booklbl { color: var(--fg-mute); font-size: .72rem; }
+.vx-cent { fill: var(--vz-node); stroke: var(--vz-c1); stroke-width: 1.5; }
+.vx-cent.is-on { fill: var(--vz-c1); }
+.vx-cent-lbl { fill: var(--vz-c1); font: 700 7.5px var(--font-sans); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.vx-cent.is-on + .vx-cent-lbl { fill: var(--vz-on); }
+.vx-fs .vx-cells { display: grid; grid-template-columns: 2.6rem repeat(16, minmax(0, 1fr)); gap: 2px; font-size: .7rem; }
+.vx-fs .vx-cell { min-width: 0; padding: .22rem 0; overflow: hidden; white-space: nowrap; }
+.vx-fs .vx-rowname { min-width: 0; }

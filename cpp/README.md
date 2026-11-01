@@ -1,6 +1,6 @@
 # Code for Parts III–V
 
-This folder has the starting code for the tasks of weeks 17–22: one file per
+This folder has the starting code for the tasks of weeks 17–24: one file per
 task, tests for every task, and benchmarks with the speed goals. The task
 descriptions are in the course material.
 
@@ -117,6 +117,8 @@ hardware thread). Close other programs when you measure.
 | 21 | 1–8 | `week21/task1_index.cpp` … `week21/task8_parallel_index.cpp` (task 2 also has `and_query`) |
 | 22 | 1–6, 8 | `week22/task1_push.cpp` … `week22/task6_pull_parallel.cpp`, `week22/task8_order.cpp` |
 | 22 | 7 | `week22/task6_pull_parallel.cpp` |
+| 23 | 1–8 | `week23/task1_distance.cpp` … `week23/task8_batch.cpp` (task 6 has three functions) |
+| 24 | 1–8 | `week24/task1_select.cpp` … `week24/task8_settings.cpp` |
 
 `tasks.hpp` in each week's folder says what each function must do. Do not
 change the tests, the baselines or the benchmarks: the grader uses its own
@@ -129,5 +131,8 @@ grids (25,600 and 40,000 nodes), because the baseline contraction is slow.
 Week 21 uses generated documents whose words follow Zipf's law. Week 22 uses
 the SNAP web graph web-Google if you download it with
 `tools/download_snap.sh`; otherwise a generated web graph of the same size.
+Weeks 23 and 24 use the first vectors of SIFT1M if you download it with
+`tools/download_sift.sh`; otherwise SIFT-like generated vectors (200,000 for
+week 23 and 100,000 for week 24).
 
 Keep your solutions private: do not put them in a public repository.
