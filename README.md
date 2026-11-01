@@ -1,11 +1,16 @@
-# Tietorakenteet ja algoritmit, kevät 2026 (unofficial)
+# Tietorakenteet ja algoritmit,(unofficial)
 
-Course material for the University of Helsinki course *Tietorakenteet ja
-algoritmit* (spring 2026), published at <https://tira.mooc.fi/kevat-2026/> and 
+Adapted from the course material for *Tietorakenteet ja
+algoritmit*, published at <https://tira.mooc.fi/kevat-2026/> originally and 
 created by Antti Laaksonen <https://github.com/pllk>.
 
 This is a private fork, modified with permission from Antti Laaksonen and 
 is not intended for commercial use.
+
+The algorithms course is continued with parts III, VI, V, and will switch to
+using C++ as the main language and also have a focus on performance optimizations.
+
+Served at <https://neoharju.github.io/tira-2026>
 
 The site is built with Jekyll through the `github-pages` gem, so it builds the
 same way on GitHub Pages and locally. It has no custom plugins and loads
