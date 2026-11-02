@@ -860,8 +860,10 @@
 
   /* ==================================================== the road map */
   // A generated city: a jittered grid with lakes, a few one-way streets and two
-  // fast highways. Weights are travel times. The largest strongly connected
-  // component is kept.
+  // fast highways. The map has two sets of weights: travel times (the highways
+  // are about 2.5 times faster than the streets) and lengths. The largest
+  // strongly connected component is kept. makeMap(...).time and .len are the
+  // two graphs; they share the nodes and the drawing.
   function makeMap(seed = 20260) {
     const rnd = mulberry32(seed);
     const GW = 32;
@@ -886,11 +888,12 @@
     const draw = [];
     const add = (a, b, hw) => {
       const len = Math.hypot(xs[a] - xs[b], ys[a] - ys[b]);
-      const w = Math.max(1, Math.round(len * (hw ? 0.45 : 1 + rnd() * 0.6)));
+      const w = Math.max(1, Math.round(len * (hw ? 0.45 : 1 + rnd() * 0.6)));  // travel time
+      const wl = Math.max(1, Math.round(len));  // length
       const r = rnd();
-      if (!hw && r < 0.05) arcs.push([a, b, w]);
-      else if (!hw && r < 0.1) arcs.push([b, a, w]);
-      else { arcs.push([a, b, w]); arcs.push([b, a, w]); }
+      if (!hw && r < 0.05) arcs.push([a, b, w, wl]);
+      else if (!hw && r < 0.1) arcs.push([b, a, w, wl]);
+      else { arcs.push([a, b, w, wl]); arcs.push([b, a, w, wl]); }
       draw.push([a, b, hw]);
     };
     for (let gy = 0; gy < GH; gy++) {
@@ -917,19 +920,27 @@
     const f = reach(out0, center);
     const b = reach(in0, center);
     const map = [];
-    const M = { x: [], y: [], w: 14 * 2 + (GW - 1) * SP, h: 14 * 2 + (GH - 1) * SP };
-    for (let i = 0; i < n0; i++) if (f[i] && b[i]) { map[i] = M.x.length; M.x.push(xs[i]); M.y.push(ys[i]); }
-    M.n = M.x.length;
-    M.out = Array.from({ length: M.n }, () => []);
-    M.in = Array.from({ length: M.n }, () => []);
-    for (const [a, c, w] of arcs) if (map[a] != null && map[c] != null) { M.out[map[a]].push([map[c], w]); M.in[map[c]].push([map[a], w]); }
-    M.draw = draw.filter(([a, c]) => map[a] != null && map[c] != null).map(([a, c, hw]) => [map[a], map[c], hw]);
-    M.nearest = (x, y) => { let bi = 0; let bd = Infinity; for (let i = 0; i < M.n; i++) { const d = (M.x[i] - x) ** 2 + (M.y[i] - y) ** 2; if (d < bd) { bd = d; bi = i; } } return bi; };
-    return M;
+    const B = { x: [], y: [], w: 14 * 2 + (GW - 1) * SP, h: 14 * 2 + (GH - 1) * SP };
+    for (let i = 0; i < n0; i++) if (f[i] && b[i]) { map[i] = B.x.length; B.x.push(xs[i]); B.y.push(ys[i]); }
+    B.n = B.x.length;
+    B.draw = draw.filter(([a, c]) => map[a] != null && map[c] != null).map(([a, c, hw]) => [map[a], map[c], hw]);
+    B.nearest = (x, y) => { let bi = 0; let bd = Infinity; for (let i = 0; i < B.n; i++) { const d = (B.x[i] - x) ** 2 + (B.y[i] - y) ** 2; if (d < bd) { bd = d; bi = i; } } return bi; };
+    for (const [kind, col] of [["time", 2], ["len", 3]]) {
+      const M = Object.create(B);  // the nodes and the drawing are shared; caches go on M
+      M.kind = kind;
+      M.out = Array.from({ length: B.n }, () => []);
+      M.in = Array.from({ length: B.n }, () => []);
+      for (const arc of arcs) {
+        const a = map[arc[0]], c = map[arc[1]];
+        if (a != null && c != null) { M.out[a].push([c, arc[col]]); M.in[c].push([a, arc[col]]); }
+      }
+      B[kind] = M;
+    }
+    return B;
   }
 
   let MAP = null;
-  const theMap = () => (MAP || (MAP = makeMap()));
+  const theMap = (kind = "time") => (MAP || (MAP = makeMap()))[kind];
 
   function walk(par, v) {
     const p = [];
@@ -1000,7 +1011,7 @@
       path = walk(par[0], meet[0]);
       if (meet[1] !== meet[0]) for (let v = meet[1]; v >= 0; v = par[1][v]) path.push(v);
     }
-    return { events, dist: mu, path };
+    return { events, dist: mu, path, meet: meet ? meet[0] : -1 };
   }
 
   function geoPotential(M, t) {
@@ -1038,10 +1049,9 @@
       return best;
     };
   }
-  let LM8 = null;
   const landmarks8 = (M) => {
-    if (!LM8) { LM8 = newLandmarks(); for (let i = 0; i < 8; i++) addLandmark(M, LM8); }
-    return LM8;
+    if (!M.lm8) { M.lm8 = newLandmarks(); for (let i = 0; i < 8; i++) addLandmark(M, M.lm8); }
+    return M.lm8;
   };
 
   /* ---------------------------------------------- contraction hierarchy */
@@ -1156,7 +1166,7 @@
         if (d < dist[dir][v]) { dist[dir][v] = d; par[dir][v] = u; q.push(d, v); }
       }
     }
-    if (top < 0) return { events, dist: Infinity, path: [] };
+    if (top < 0) return { events, dist: Infinity, path: [], meet: -1 };
     const hops = walk(par[0], top);
     for (let v = par[1][top]; v >= 0; v = par[1][v]) hops.push(v);
     const path = [hops[0]];
@@ -1167,7 +1177,7 @@
       unpack(m, b);
     };
     for (let i = 0; i + 1 < hops.length; i++) unpack(hops[i], hops[i + 1]);
-    return { events, dist: mu, path };
+    return { events, dist: mu, path, meet: top };
   }
 
   /* -------------------------------------------------------- map drawing */
@@ -1181,9 +1191,10 @@
     }
     s("path", { d: road, class: "rr-road" }, svg);
     s("path", { d: hwy, class: "rr-hwy" }, svg);
+    // the route under the dots, so that the nodes settled on it stay visible
+    const path = s("path", { class: "rr-path" }, svg);
     const g = s("g", {}, svg);
     const dots = M.x.map((x, i) => s("circle", { cx: x.toFixed(1), cy: M.y[i].toFixed(1), r: 2.4, class: "rr-n" }, g));
-    const path = s("path", { class: "rr-path" }, svg);
     const marks = s("g", { class: "rr-marks" }, svg);
     parent.appendChild(svg);
     return { svg, dots, path, marks };
@@ -1200,8 +1211,10 @@
       const y = M.y[m.node];
       if (m.kind === "lm") {
         s("path", { d: `M${x} ${y - 7}L${x + 7} ${y}L${x} ${y + 7}L${x - 7} ${y}Z`, class: `rr-lm${m.cls ? " " + m.cls : ""}` }, view.marks);
-        const t = s("text", { x, y: y - 10, class: "rr-lm-label" }, view.marks);
+        const t = s("text", { x, y: y < 26 ? y + 17 : y - 10, class: "rr-lm-label" }, view.marks);  // below the mark at the top border
         t.textContent = m.text;
+      } else if (m.kind === "meet") {
+        s("circle", { cx: x, cy: y, r: 9, class: "rr-meet" }, view.marks);
       } else {
         s("circle", { cx: x, cy: y, r: 7.5, class: `rr-st ${m.kind}` }, view.marks);
         const t = s("text", { x, y: y + 0.5, class: "rr-st-label" }, view.marks);
@@ -1231,10 +1244,13 @@
   };
 
   register("route-race", (fig, { mode }) => {
-    const M = theMap();
     const keys = RACE_MODES[mode] || RACE_MODES.all;
-    let s = mode === "intro" ? M.nearest(200, 380) : M.nearest(60, 330);
-    let t = mode === "intro" ? M.nearest(500, 40) : M.nearest(600, 60);
+    // The first race uses lengths, where the straight line is a good bound; the
+    // others travel times. A toggle switches the weights.
+    let weights = mode === "intro" ? "len" : "time";
+    let M = theMap(weights);
+    let s = mode === "intro" ? M.nearest(298, 178) : mode === "all" ? M.nearest(337, 190) : M.nearest(60, 330);
+    let t = mode === "intro" ? M.nearest(32, 37) : mode === "all" ? M.nearest(14, 13) : M.nearest(600, 60);
     let clickSets = "t";
     const ui = frame(fig, { title: keys.length === 2 ? `${RACERS[keys[0]].name} vs ${RACERS[keys[1]].name}` : "Four searches, one route", kicker: "Try it" });
     ui.stage.classList.add("is-plain");
@@ -1262,8 +1278,13 @@
       do { s = Math.floor(rnd() * M.n); t = Math.floor(rnd() * M.n); } while (Math.hypot(M.x[s] - M.x[t], M.y[s] - M.y[t]) < 200);
       run();
     });
+    if (mode !== "ch") {
+      tools.appendChild(h("span", { class: "viz-sep" }));
+      toggle(tools, "Weights", [["len", "lengths"], ["time", "travel times"]], weights, (k) => { weights = k; M = theMap(k); run(); });
+    }
     tools.appendChild(h("span", { class: "viz-sep" }));
     toggle(tools, "Click sets", [["s", "source s"], ["t", "target t"]], clickSets, (k) => { clickSets = k; });
+    const ends = () => [{ node: s, kind: "src", text: "s" }, { node: t, kind: "dst", text: "t" }];
     let raf = 0;
     function run() {
       cancelAnimationFrame(raf);
@@ -1271,7 +1292,7 @@
       for (const [i, p] of panels.entries()) {
         for (const d of p.view.dots) d.setAttribute("class", "rr-n");
         drawPath(p.view, M, []);
-        drawMarks(p.view, M, [{ node: s, kind: "src", text: "s" }, { node: t, kind: "dst", text: "t" }]);
+        drawMarks(p.view, M, ends());
         p.count.textContent = "0 nodes";
         p.box.classList.remove("is-done");
         p.res = results[i];
@@ -1281,14 +1302,27 @@
       const perFrame = Math.max(1, Math.ceil(longest / 120));
       const finish = (p) => {
         drawPath(p.view, M, p.res.path);
+        // the bidirectional searches (and the CH query) meet at the ring
+        if (p.res.meet != null && p.res.meet >= 0) drawMarks(p.view, M, [...ends(), { node: p.res.meet, kind: "meet" }]);
         p.box.classList.add("is-done");
       };
       const caption = () => {
+        const n = (key) => panels.find((p) => p.key === key).res.events.length;
         const parts = panels.map((p) => `${RACERS[p.key].name} ${p.res.events.length}`);
-        const base = panels[0].res.events.length;
-        const best = panels[panels.length - 1];
-        const ratio = base / Math.max(1, best.res.events.length);
-        ui.setCaption(`Settled nodes: ${parts.join(" · ")}. All find the same travel time ${panels[0].res.dist}. ${keys.length === 2 ? `${RACERS[best.key].name} settles ${ratio.toFixed(1)} times fewer nodes.` : ""} Click a map to move ${clickSets === "t" ? "the target" : "the source"}.`);
+        const what = weights === "len" ? "length" : "travel time";
+        const dists = panels.map((p) => p.res.dist);
+        const same = dists.every((d) => d === dists[0]) ? `All find the same ${what}, ${dists[0]}.` : `They find the ${what}s ${dists.join(", ")}.`;
+        let more = "";
+        if (mode === "intro") {
+          more = `A* settles ${(n("dijkstra") / Math.max(1, n("astar"))).toFixed(1)} times fewer nodes. ${weights === "len"
+            ? "With lengths as weights, no road is shorter than the straight line, so the bound is close to the truth."
+            : "With travel times, the bound must assume highway speed on every street, so it is weak, and A* gains much less."} Switch the weights to compare.`;
+        } else if (mode === "all") {
+          more = `ALT settles ${(n("dijkstra") / Math.max(1, n("alt"))).toFixed(1)} times fewer nodes than Dijkstra. The forward search (blue) and the backward search (orange) of bidirectional Dijkstra meet at the ring.`;
+        } else if (mode === "ch") {
+          more = `The query settles ${(n("dijkstra") / Math.max(1, n("ch"))).toFixed(0)} times fewer nodes. The upward searches meet at the ring, the most important node of the route.`;
+        }
+        ui.setCaption(`Settled nodes: ${parts.join(" · ")}. ${same} ${more} Click a map to move ${clickSets === "t" ? "the target" : "the source"}.`);
       };
       if (reduced.matches) {
         for (const p of panels) {
@@ -1323,36 +1357,46 @@
       const io = new IntersectionObserver((es) => { if (es[0].isIntersecting) { io.disconnect(); setTimeout(start, 300); } }, { threshold: 0.4 });
       io.observe(fig);
     } else start();
-    const results0 = panels.map((p) => RACERS[p.key].run(M, s, t));
-    drawStatic(results0);
-    function drawStatic(results) {
-      panels.forEach((p, i) => { p.res = results[i]; drawMarks(p.view, M, [{ node: s, kind: "src", text: "s" }, { node: t, kind: "dst", text: "t" }]); p.count.textContent = ""; });
-      ui.setCaption("Each search settles the same number of nodes per frame, so the one with less work finishes first.");
-    }
+    panels.forEach((p) => { drawMarks(p.view, M, ends()); p.count.textContent = ""; });
+    ui.setCaption("Each search settles the same number of nodes per frame, so the one with less work finishes first.");
   });
 
   /* -------------------------------------------------- ALT bound quality */
   register("alt-bound", (fig) => {
-    const M = theMap();
-    const L = newLandmarks();
+    let weights = "time";
+    let M = theMap(weights);
+    let L = newLandmarks();
     let kind = "alt";
+    let colour = "bound";
     let s = M.nearest(60, 330);
-    let t = M.nearest(600, 60);
+    let t = M.nearest(330, 170);
     let clickSets = "t";
+    const BANDS = ["0–20%", "20–40%", "40–60%", "60–80%", "80–95%", "95–100%"];
     const ui = frame(fig, { title: "How good is the lower bound?", kicker: "Try it" });
     ui.stage.classList.add("is-plain");
     const box = h("div", { class: "rr-panel is-single" });
     ui.stage.appendChild(box);
     const view = mapSvg(box, M);
-    const legend = h("div", { class: "rr-legend" }, h("span", { text: "bound / true distance:" }),
-      ...["0–20%", "20–40%", "40–60%", "60–80%", "80–95%", "95–100%"].map((txt, i) => h("span", { class: "rr-key" }, h("i", { class: `q${i}` }), txt)));
+    const keysEls = BANDS.map((txt, i) => h("span", { class: "rr-key" }, h("i", { class: `q${i}` }), h("span", { text: txt }), h("b", { class: "rr-share" })));
+    const legend = h("div", { class: "rr-legend" }, h("span", { text: "bound / true distance to t (share of nodes):" }), ...keysEls);
     box.appendChild(legend);
     const tools = toolbar(ui);
     const btnAdd = button(tools, "Add a landmark", () => { if (L.list.length < 8) { addLandmark(M, L); kind = "alt"; syncKind(); show(true); } }, "is-primary");
-    button(tools, "Remove landmarks", () => { Object.assign(L, newLandmarks()); show(); });
+    button(tools, "Remove landmarks", () => { L = newLandmarks(); show(); });
     tools.appendChild(h("span", { class: "viz-sep" }));
     const kindButtons = toggle(tools, "Bound", [["alt", "landmarks"], ["geo", "straight line"]], kind, (k) => { kind = k; show(); });
     const syncKind = () => kindButtons.forEach((b, i) => b.setAttribute("aria-pressed", String((i === 0) === (kind === "alt"))));
+    tools.appendChild(h("span", { class: "viz-sep" }));
+    toggle(tools, "Weights", [["time", "travel times"], ["len", "lengths"]], weights, (k) => {
+      const count = L.list.length;
+      weights = k;
+      M = theMap(k);
+      L = newLandmarks();
+      for (let i = 0; i < count; i++) addLandmark(M, L);
+      show();
+    });
+    tools.appendChild(h("span", { class: "viz-sep" }));
+    toggle(tools, "Colour", [["bound", "by the bound"], ["search", "nodes that A* settles"]], colour, (k) => { colour = k; show(); });
     tools.appendChild(h("span", { class: "viz-sep" }));
     toggle(tools, "Click sets", [["s", "source s"], ["t", "target t"]], clickSets, (k) => { clickSets = k; });
     view.svg.addEventListener("click", (ev) => {
@@ -1365,25 +1409,32 @@
     function show(added = false) {
       const truth = mapAll(M, t, true);   // d(v, t) for every v
       const pot = kind === "geo" ? geoPotential(M, t) : altPotential(L, t);
+      const res = mapSearch(M, s, t, kind === "alt" && !L.list.length ? null : pot);
+      const dij = mapSearch(M, s, t, null).events.length;
+      const settled = new Uint8Array(M.n);
+      for (const [v] of res.events) settled[v] = 1;
       let sum = 0;
       let cnt = 0;
+      const bands = new Array(6).fill(0);
       for (let v = 0; v < M.n; v++) {
         if (v === t) { view.dots[v].setAttribute("class", "rr-n"); continue; }
         const q = truth[v] > 0 ? pot(v) / truth[v] : 1;
         sum += q;
         cnt++;
         const k = q >= 0.95 ? 5 : q >= 0.8 ? 4 : Math.min(3, Math.floor(q * 5));
-        view.dots[v].setAttribute("class", `rr-n q${k}`);
+        bands[k]++;
+        view.dots[v].setAttribute("class", colour === "bound" ? `rr-n q${k}` : settled[v] ? "rr-n is-f" : "rr-n");
       }
+      keysEls.forEach((el, i) => { el.lastChild.textContent = `${Math.round((100 * bands[i]) / cnt)}%`; });
+      legend.classList.toggle("is-off", colour !== "bound");
       const marks = [{ node: s, kind: "src", text: "s" }, { node: t, kind: "dst", text: "t" }];
       L.list.forEach((v, i) => marks.unshift({ node: v, kind: "lm", text: `L${i + 1}`, cls: added && i === L.list.length - 1 ? "is-new" : "" }));
       drawMarks(view, M, marks);
-      const res = mapSearch(M, s, t, kind === "alt" && !L.list.length ? null : pot);
       drawPath(view, M, res.path);
-      const dij = mapSearch(M, s, t, null).events.length;
       btnAdd.disabled = L.list.length >= 8;
       const what = kind === "geo" ? "The straight-line bound" : L.list.length ? `With ${L.list.length} landmark${L.list.length > 1 ? "s" : ""}, the bound` : "Without landmarks the bound is 0, and it";
-      ui.setCaption(`${what} is on average **${Math.round((100 * sum) / cnt)}%** of the true distance to t. A* with it settles **${res.events.length}** nodes from s to t (Dijkstra: ${dij}).${kind === "alt" && L.list.length < 8 ? " Press **Add a landmark**: the next one is the node farthest from the landmarks so far." : ""}`);
+      const why = kind === "geo" && weights === "time" ? " It must assume highway speed on every street, so it is weak." : "";
+      ui.setCaption(`${what} is on average **${Math.round((100 * sum) / cnt)}%** of the true ${weights === "time" ? "travel time" : "distance"} to t.${why} A* with it settles **${res.events.length}** nodes from s to t (Dijkstra: ${dij}).${kind === "alt" && L.list.length < 8 ? " Press **Add a landmark**: the next one is the node farthest from the landmarks so far." : ""}`);
     }
     show();
   });

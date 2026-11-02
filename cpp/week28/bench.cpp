@@ -1,5 +1,5 @@
-// Speed goals for week 28 (tasks 3, 4 and 8 have none: their tests are the
-// goal; tasks 3 and 4 print the speed against std::unordered_map). Run in
+// Speed goals for week 28 (tasks 2, 3 and 8 have none: their tests are the
+// goal; tasks 2 and 3 print the speed against std::unordered_map). Run in
 // the release build: ./w28_bench [task]. Every benchmark first checks your
 // result: a wrong result is not timed.
 // The goals were calibrated with GCC 16 on a 4-core machine with AVX-512.
@@ -21,14 +21,14 @@ bool wrong(std::string_view task, std::string_view what) {
     return false;
 }
 
-// Tasks 5-7 measure your Swiss table of tasks 3 and 4: check that it works.
+// Tasks 4, 5 and 7 measure your Swiss table of tasks 2 and 3: check that it works.
 bool swiss_works(std::string_view task) {
     SwissMap<SseGroup> m(16, 1);
     bool ok = true;
     for (Key k = 0; k < 1000; ++k) ok = ok && m.insert(k * 7919, k);
     for (Key k = 0; k < 1000; ++k) ok = ok && m.find(k * 7919) == k && !m.find(k * 7919 + 1).has_value();
     for (Key k = 0; k < 1000; k += 2) ok = ok && m.erase(k * 7919);
-    if (!ok) std::println("{}: your Swiss table of tasks 3 and 4 does not work yet, so it is not measured", task.substr(0, 5));
+    if (!ok) std::println("{}: your Swiss table of tasks 2 and 3 does not work yet, so it is not measured", task.substr(0, 5));
     return ok;
 }
 
@@ -39,25 +39,27 @@ std::vector<Key> random_keys(std::size_t n, std::uint64_t seed) {
     return k;
 }
 
-// Builds a map of 1,000,000 random keys whose values form one random cycle
-// (the value of a key is the index of the next key), then follows the cycle
-// for 1,000,000 lookups: every lookup needs the result of the one before.
+// Random keys whose values form one random cycle: the value of a key is the
+// index of the next key. Following the cycle, every lookup needs the result
+// of the one before.
 struct Cycle {
     std::vector<Key> keys;
     std::vector<std::uint32_t> next;
 };
+Cycle make_cycle(std::size_t n, std::uint64_t seed) {
+    Cycle s;
+    s.keys = random_keys(n, seed);
+    s.next.resize(n);
+    std::vector<std::uint32_t> order(n);
+    for (std::size_t i = 0; i < n; ++i) order[i] = static_cast<std::uint32_t>(i);
+    std::mt19937_64 rng(seed + 1);
+    std::ranges::shuffle(order, rng);
+    for (std::size_t i = 0; i < n; ++i) s.next[order[i]] = order[(i + 1) % n];
+    return s;
+}
+// A map of 1,000,000 keys, built and then followed for 1,000,000 lookups.
 const Cycle& cycle() {
-    static const Cycle c = [] {
-        Cycle s;
-        s.keys = random_keys(1'000'000, 28);
-        s.next.resize(s.keys.size());
-        std::vector<std::uint32_t> order(s.keys.size());
-        for (std::size_t i = 0; i < order.size(); ++i) order[i] = static_cast<std::uint32_t>(i);
-        std::mt19937_64 rng(29);
-        std::ranges::shuffle(order, rng);
-        for (std::size_t i = 0; i < order.size(); ++i) s.next[order[i]] = order[(i + 1) % order.size()];
-        return s;
-    }();
+    static const Cycle c = make_cycle(1'000'000, 28);
     return c;
 }
 
@@ -135,13 +137,15 @@ bool bench_churn(std::string_view task, double goal) {
     return tira::report(task, t, goal);
 }
 
-bool bench1() { return bench_build<RobinHoodMap>("task1 Robin Hood build and find", 1.4); }
-bool bench2() { return bench_churn<RobinHoodMap>("task2 Robin Hood erase and insert", 1.3); }
-bool bench3() { return bench_build<SwissMap<ScalarGroup>>("task3 Swiss table build and find", 0); }
-bool bench4() { return bench_churn<SwissMap<ScalarGroup>>("task4 Swiss table erase and insert", 0); }
+bool bench1() {
+    const bool build = bench_build<RobinHoodMap>("task1 Robin Hood build and find", 1.4);
+    return bench_churn<RobinHoodMap>("task1 Robin Hood erase and insert", 1.3) && build;
+}
+bool bench2() { return bench_build<SwissMap<ScalarGroup>>("task2 Swiss table build and find", 0); }
+bool bench3() { return bench_churn<SwissMap<ScalarGroup>>("task3 Swiss table erase and insert", 0); }
 
-bool bench5() {
-    const std::string_view task = "task5 SSE2 groups, 4 MB table";
+bool bench4() {
+    const std::string_view task = "task4 SSE2 groups, 4 MB table";
     if (!swiss_works(task)) return false;
     // A table that fits in the L2 and L3 caches: the instructions decide.
     const auto keys = random_keys(150'000, 32);
@@ -164,8 +168,8 @@ bool bench5() {
     return ok;
 }
 
-bool bench6() {
-    const std::string_view task = "task6 batches, 128 MB table";
+bool bench5() {
+    const std::string_view task = "task5 batches, 128 MB table";
     if (!swiss_works(task)) return false;
     const auto keys = random_keys(4'000'000, 34);
     auto queries = random_keys(4'000'000, 35);
@@ -187,6 +191,50 @@ bool bench6() {
         },
         5);
     return tira::report(task, t, 1.3);
+}
+
+// Follows a cycle of `steps` dependent lookups through a map built from c.
+template <class Map>
+std::uint64_t chase(const Map& m, const Cycle& c, std::size_t steps) {
+    std::uint32_t at = 0;
+    for (std::size_t step = 0; step < steps; ++step) {
+        if constexpr (requires { m.find(Key{})->second; }) {  // std::unordered_map
+            const auto it = m.find(c.keys[at]);
+            if (it == m.end()) return UINT64_MAX;
+            at = static_cast<std::uint32_t>(it->second);
+        } else {
+            const auto v = m.find(c.keys[at]);
+            if (!v) return UINT64_MAX;
+            at = static_cast<std::uint32_t>(*v);
+        }
+    }
+    return at;
+}
+
+bool bench6() {
+    const std::string_view task = "task6 cuckoo, dependent lookups";
+    // 3,700,000 keys: the table ends with 2^20 buckets (64 MB), 88 % full.
+    const Cycle c = make_cycle(3'700'000, 38);
+    const std::size_t steps = 2'000'000;
+    CuckooMap cuckoo(4, 1);
+    for (std::size_t i = 0; i < c.keys.size(); ++i) cuckoo.insert(c.keys[i], c.next[i]);
+    if (cuckoo.size() != c.keys.size()) return wrong(task, "size() is not the number of keys");
+    std::unordered_map<Key, Value> std_map;
+    for (std::size_t i = 0; i < c.keys.size(); ++i) std_map.insert({c.keys[i], c.next[i]});
+    if (chase(cuckoo, c, steps) != chase(std_map, c, steps)) return wrong(task, "a lookup did not find its key or its value");
+    auto t = tira::compare([&] { tira::keep(chase(std_map, c, steps)); }, [&] { tira::keep(chase(cuckoo, c, steps)); }, 5);
+    const bool ok = tira::report(task, t, 1.7);
+    std::println("      {} keys in {} buckets of 4 slots: {:.1f} % full", cuckoo.size(), cuckoo.bucket_count(),
+                 100.0 * static_cast<double>(cuckoo.size()) / static_cast<double>(cuckoo.capacity()));
+    if (swiss_works(task)) {
+        SwissMap<SseGroup> s(16, 1);
+        for (std::size_t i = 0; i < c.keys.size(); ++i) s.insert(c.keys[i], c.next[i]);
+        if (chase(s, c, steps) == chase(cuckoo, c, steps)) {
+            auto u = tira::compare([&] { tira::keep(chase(s, c, steps)); }, [&] { tira::keep(chase(cuckoo, c, steps)); }, 3);
+            std::println("      your cuckoo table against your Swiss table with SSE2: {:.2f}x (no goal)", u.speedup());
+        }
+    }
+    return ok;
 }
 
 bool bench7() {

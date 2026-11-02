@@ -1,12 +1,12 @@
 add_library(w28 STATIC
-  robin_hood.cpp task1_robin_find_insert.cpp task2_robin_erase.cpp task3_swiss.cpp task4_swiss_erase.cpp task6_batch.cpp
+  robin_hood.cpp cuckoo.cpp task1_robin_hood.cpp task2_swiss.cpp task3_swiss_erase.cpp task5_batch.cpp task6_cuckoo.cpp
   task7_sharded.cpp task8_consistent.cpp)
 target_link_libraries(w28 PUBLIC common)
 target_include_directories(w28 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 # The Swiss table is compiled without automatic vectorization, so that
 # ScalarGroup stays scalar and SseGroup is your SIMD code.
-set_source_files_properties(task3_swiss.cpp task4_swiss_erase.cpp task6_batch.cpp PROPERTIES COMPILE_OPTIONS "${TIRA_NO_VECTORIZE}")
+set_source_files_properties(task2_swiss.cpp task3_swiss_erase.cpp task5_batch.cpp PROPERTIES COMPILE_OPTIONS "${TIRA_NO_VECTORIZE}")
 
 add_executable(w28_test test.cpp ../common/test_main.cpp)
 target_link_libraries(w28_test PRIVATE w28 doctest::doctest)

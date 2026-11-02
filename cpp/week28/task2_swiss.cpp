@@ -1,9 +1,9 @@
-// Task 3: find and insert of the Swiss table, as swiss.hpp describes, with
-// the group functions of Group (ScalarGroup, or SseGroup of task 5). The
+// Task 2: find and insert of the Swiss table, as swiss.hpp describes, with
+// the group functions of Group (ScalarGroup, or SseGroup of task 4). The
 // lines at the end compile your code for both. Automatic vectorization is off
 // for this file, so that ScalarGroup stays scalar.
 #include "swiss.hpp"
-#include "task5_group_sse.hpp"
+#include "task4_group_sse.hpp"
 
 namespace w28 {
 

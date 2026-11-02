@@ -142,8 +142,8 @@ hardware thread). Close other programs when you measure.
 | 26 | 5 | `week26/task5_fuzz.hpp` (a template, used by the tests and by `fuzz.cpp`) |
 | 27 | 1–4, 6–8 | `week27/task1_slotted_page.cpp` … `week27/task4_sketch.cpp`, `week27/task6_blocked_sketch.cpp` … `week27/task8_guards.cpp` |
 | 27 | 5 | `week27/task5_wtinylfu.hpp` (a class template) |
-| 28 | 1–4, 6–8 | `week28/task1_robin_find_insert.cpp` … `week28/task4_swiss_erase.cpp`, `week28/task6_batch.cpp` … `week28/task8_consistent.cpp` |
-| 28 | 5 | `week28/task5_group_sse.hpp` |
+| 28 | 1–3, 5–8 | `week28/task1_robin_hood.cpp` … `week28/task3_swiss_erase.cpp`, `week28/task5_batch.cpp` … `week28/task8_consistent.cpp` |
+| 28 | 4 | `week28/task4_group_sse.hpp` |
 
 `tasks.hpp` in each week's folder says what each function must do. Do not
 change the tests, the baselines or the benchmarks: the grader uses its own

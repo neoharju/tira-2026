@@ -1,4 +1,4 @@
-// Tests for week 28. Run one task's tests with: ./w28_test -tc="task4*"
+// Tests for week 28. Run one task's tests with: ./w28_test -tc="task6*"
 // Task 7 uses threads: run its tests in the tsan preset too.
 #include <doctest/doctest.h>
 
@@ -66,7 +66,7 @@ void random_operations(Map& m, std::size_t ops, std::uint64_t range, unsigned er
 
 }  // namespace
 
-TEST_CASE("task1 Robin Hood find and insert") {
+TEST_CASE("task1 Robin Hood hashing") {
     SUBCASE("simple cases and growth") {
         RobinHoodMap m;
         CHECK_FALSE(m.find(1).has_value());
@@ -95,10 +95,7 @@ TEST_CASE("task1 Robin Hood find and insert") {
         CHECK(ok);
         check_valid(m);
     }
-}
-
-TEST_CASE("task2 Robin Hood erase") {
-    SUBCASE("simple cases") {
+    SUBCASE("erase: simple cases") {
         RobinHoodMap m;
         for (Key k = 0; k < 10; ++k) m.insert(k, k);
         CHECK(m.erase(3));
@@ -110,7 +107,7 @@ TEST_CASE("task2 Robin Hood erase") {
         CHECK(m.size() == 0);
         CHECK(std::ranges::all_of(m.slots, [](const auto& s) { return s.dist == 0; }));
     }
-    SUBCASE("random operations") {
+    SUBCASE("erase: random operations") {
         for (std::uint64_t seed = 1; seed <= 3; ++seed) {
             RobinHoodMap m(16, seed);
             random_operations(m, 60000, seed == 1 ? 0 : 3000, 30, seed);
@@ -118,7 +115,7 @@ TEST_CASE("task2 Robin Hood erase") {
     }
 }
 
-TEST_CASE("task3 Swiss table find and insert") {
+TEST_CASE("task2 Swiss table find and insert") {
     SUBCASE("simple cases and growth") {
         SwissMap<ScalarGroup> m;
         CHECK(m.insert(1, 10));
@@ -143,7 +140,7 @@ TEST_CASE("task3 Swiss table find and insert") {
     }
 }
 
-TEST_CASE("task4 Swiss table erase") {
+TEST_CASE("task3 Swiss table erase") {
     SUBCASE("simple cases") {
         SwissMap<ScalarGroup> m;
         for (Key k = 0; k < 10; ++k) m.insert(k, k);
@@ -179,7 +176,7 @@ TEST_CASE("task4 Swiss table erase") {
     }
 }
 
-TEST_CASE("task5 SSE2 group probe") {
+TEST_CASE("task4 SSE2 group probe") {
     SUBCASE("the same masks as the scalar functions") {
         std::mt19937_64 rng(5);
         alignas(16) std::int8_t ctrl[group_size];
@@ -201,7 +198,7 @@ TEST_CASE("task5 SSE2 group probe") {
     }
 }
 
-TEST_CASE("task6 batches of lookups") {
+TEST_CASE("task5 batches of lookups") {
     for (const std::size_t n : {0, 1, 15, 16, 17, 1000, 50000}) {
         SwissMap<SseGroup> m(16, n);
         std::mt19937_64 rng(n);
@@ -221,6 +218,51 @@ TEST_CASE("task6 batches of lookups") {
         bool scalar = true;
         for (std::size_t i = 0; i < keys.size(); ++i) scalar = scalar && out[i] == keys[i];
         CHECK(scalar);
+    }
+}
+
+TEST_CASE("task6 cuckoo hashing") {
+    SUBCASE("simple cases") {
+        CuckooMap m;
+        CHECK_FALSE(m.find(1).has_value());
+        CHECK(m.insert(1, 10));
+        CHECK_FALSE(m.insert(1, 11));
+        CHECK(m.find(1) == Value{11});
+        CHECK(m.erase(1));
+        CHECK_FALSE(m.erase(1));
+        CHECK_FALSE(m.find(1).has_value());
+        for (Key k = 0; k < 100; ++k) CHECK(m.insert(k, k + 1));
+        CHECK(m.size() == 100);
+        bool all = true;
+        for (Key k = 0; k < 100; ++k) all = all && m.find(k) == k + 1 && !m.find(k + 1000).has_value();
+        CHECK(all);
+        check_valid(m);
+    }
+    SUBCASE("random operations") {
+        for (std::uint64_t seed = 1; seed <= 3; ++seed) {
+            CuckooMap m(4, seed);
+            random_operations(m, 60000, seed == 1 ? 0 : 3000, seed == 3 ? 0 : 30, seed);
+        }
+    }
+    SUBCASE("the table is 90 % full before it grows") {
+        for (std::uint64_t seed = 1; seed <= 3; ++seed) {
+            CuckooMap m(1024, seed);
+            std::mt19937_64 rng(seed + 10);
+            std::vector<Key> keys;
+            std::size_t before = 0;
+            while (m.bucket_count() == 1024) {
+                before = m.size();
+                keys.push_back(rng());
+                m.insert(keys.back(), keys.size());
+            }
+            INFO("seed " << seed << ": the table grew with " << before << " pairs in 4096 slots");
+            CHECK(before >= 4096 * 9 / 10);
+            CHECK(m.bucket_count() == 2048);
+            bool all = true;
+            for (std::size_t i = 0; i < keys.size(); ++i) all = all && m.find(keys[i]) == i + 1;
+            CHECK_MESSAGE(all, "a key was lost when the table grew");
+            check_valid(m);
+        }
     }
 }
 

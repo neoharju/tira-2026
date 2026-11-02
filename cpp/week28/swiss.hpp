@@ -1,7 +1,7 @@
-// Week 28: a Swiss table (tasks 3-6), the design of Abseil's flat_hash_map
-// and of Rust's HashMap. The member functions are in task3_swiss.cpp,
-// task4_swiss_erase.cpp and task6_batch.cpp; the group functions of task 5 in
-// task5_group_sse.hpp.
+// Week 28: a Swiss table (tasks 2-5), the design of Abseil's flat_hash_map,
+// of Rust's HashMap and of Go's map. The member functions are in
+// task2_swiss.cpp, task3_swiss_erase.cpp and task5_batch.cpp; the group
+// functions of task 4 in task4_group_sse.hpp.
 #pragma once
 #include <bit>
 #include <cstddef>
@@ -27,7 +27,7 @@ inline constexpr std::size_t group_size = 16;
 using Mask = std::uint32_t;
 
 // The group functions of a group of 16 control bytes, one byte at a time.
-// Task 5 writes SseGroup with the same functions in a few SSE2 instructions.
+// Task 4 writes SseGroup with the same functions in a few SSE2 instructions.
 struct ScalarGroup {
     // The slots whose control byte is h2.
     static Mask match(const std::int8_t* ctrl, std::int8_t h2) {
@@ -75,10 +75,10 @@ public:
     explicit SwissMap(std::size_t capacity = 16, std::uint64_t seed = 0)
         : ctrl(capacity, kEmpty), slots(capacity), growth_left(capacity - capacity / 8), seed_(seed) {}
 
-    std::optional<Value> find(Key key) const;  // task 3
-    bool insert(Key key, Value value);         // task 3
-    bool erase(Key key);                       // task 4
-    // Task 6. out[i] = find(keys[i]) for every i, faster.
+    std::optional<Value> find(Key key) const;  // task 2
+    bool insert(Key key, Value value);         // task 2
+    bool erase(Key key);                       // task 3
+    // Task 5. out[i] = find(keys[i]) for every i, faster.
     void find_batch(std::span<const Key> keys, std::span<std::optional<Value>> out) const;
 
     std::size_t size() const { return count; }

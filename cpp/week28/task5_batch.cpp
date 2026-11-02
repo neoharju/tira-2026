@@ -1,10 +1,10 @@
-// Task 6: lookups in batches. Now this calls find for one key after another,
+// Task 5: lookups in batches. Now this calls find for one key after another,
 // and every lookup in a large table waits for its cache misses alone. Work on
 // a batch of keys at a time: first compute the hashes of the batch and
 // prefetch the first group of every key (the control bytes and the slots),
 // then probe the keys of the batch.
 #include "swiss.hpp"
-#include "task5_group_sse.hpp"
+#include "task4_group_sse.hpp"
 
 namespace w28 {
 

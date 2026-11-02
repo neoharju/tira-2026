@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "swiss.hpp"
-#include "task5_group_sse.hpp"
+#include "task4_group_sse.hpp"
 
 namespace w28 {
 
@@ -43,7 +43,7 @@ public:
 };
 
 namespace baseline {
-// One Swiss table (your SwissMap of tasks 3-5) behind one mutex.
+// One Swiss table (your SwissMap of tasks 2-4) behind one mutex.
 class LockedMap {
 public:
     explicit LockedMap(std::uint64_t seed = 0) : map_(16, seed) {}

@@ -1,4 +1,5 @@
-// Week 28: a Robin Hood hash table (tasks 1 and 2). The given parts are in
+// Week 28: a Robin Hood hash table (task 1), the design of
+// ankerl::unordered_dense and tsl::robin_map. The given parts are in
 // robin_hood.cpp.
 #pragma once
 #include <cstddef>
@@ -37,7 +38,7 @@ public:
 
     std::optional<Value> find(Key key) const;  // task 1
     bool insert(Key key, Value value);         // task 1
-    bool erase(Key key);                       // task 2
+    bool erase(Key key);                       // task 1
 
     std::size_t size() const { return count; }
     std::size_t capacity() const { return slots.size(); }

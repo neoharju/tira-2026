@@ -85,18 +85,20 @@
     // ns per dependent load on our machine, 4 KB pages and 2 MB pages.
     const DATA = [[16, 1.8, 1.8], [32, 2.0, 2.0], [64, 3.4, 3.6], [256, 5.2, 5.1], [1024, 8.1, 7.6], [4096, 27.7, 26.2],
       [16384, 124.9, 103.3], [65536, 158.3, 145.9], [262144, 203.7, 169.5], [1048576, 245.9, 180.4]];
-    let at = 5;
-    let huge = false;
+    let at = 9;
+    let huge = true;
     const ui = frame(fig, { title: "How long one load waits", kicker: "Try it" });
     ui.stage.classList.add("is-plain");
     const W = 560, H = 290, M = { l: 54, r: 18, t: 16, b: 42 };
     const svg = svgBox(ui.stage, W, H, "st-chart");
     const tools = toolbar(ui);
     slider(tools, "Data", { min: 0, max: DATA.length - 1, step: 1, value: at, format: (i) => size(DATA[i][0]) }, (i) => { at = i; draw(); });
-    toggle(tools, "Pages", [[false, "4 KB"], [true, "2 MB"]], huge, (v) => { huge = v; draw(); });
+    toggle(tools, "Pages", [[false, "4 KB only"], [true, "4 KB and 2 MB"]], huge, (v) => { huge = v; draw(); });
     function size(kb) { return kb >= 1048576 ? `${kb / 1048576} GB` : kb >= 1024 ? `${kb / 1024} MB` : `${kb} KB`; }
     const X = (kb) => M.l + (Math.log2(kb) - 4) / (20 - 4) * (W - M.l - M.r);
-    const Y = (ns) => H - M.b - (Math.log10(ns) - 0) / (Math.log10(400) - 0) * (H - M.t - M.b);
+    // A linear scale: the cost of a miss to memory, and the gain of huge pages, in true proportion.
+    const Y = (ns) => H - M.b - ns / 260 * (H - M.t - M.b);
+    const line = (col) => DATA.map((d, i) => `${i ? "L" : "M"}${X(d[0]).toFixed(1)} ${Y(d[col]).toFixed(1)}`).join("");
     function draw() {
       svg.textContent = "";
       // the levels of the hierarchy on our machine
@@ -105,23 +107,33 @@
         rect(svg, X(Math.max(a, 16)), M.t, X(Math.min(b, 1048576)) - X(Math.max(a, 16)), H - M.t - M.b, `st-band b${i}`, 0);
         label(svg, (X(Math.max(a, 16)) + X(Math.min(b, 1048576))) / 2, M.t + 12, name, "st-band-lbl");
       });
-      for (const ns of [1, 3, 10, 30, 100, 300]) {
+      for (const ns of [0, 50, 100, 150, 200, 250]) {
         seg(svg, M.l, Y(ns), W - M.r, Y(ns), "st-grid");
         label(svg, M.l - 8, Y(ns), String(ns), "st-tick", "end");
       }
       for (const kb of [16, 256, 4096, 65536, 1048576]) label(svg, X(kb), H - M.b + 16, size(kb), "st-tick");
-      label(svg, (M.l + W - M.r) / 2, H - 6, "size of the data that is read at random", "st-axis");
+      label(svg, (M.l + W - M.r) / 2, H - 6, "size of the data that is read at random (log scale)", "st-axis");
       const yl = label(svg, 14, (M.t + H - M.b) / 2, "ns per load", "st-axis");
       yl.setAttribute("transform", `rotate(-90 14 ${(M.t + H - M.b) / 2})`);
+      if (huge) {
+        // the time that 2 MB pages save: the area between the curves
+        const back = DATA.slice().reverse().map((d) => `L${X(d[0]).toFixed(1)} ${Y(d[2]).toFixed(1)}`).join("");
+        s("path", { d: `${line(1)}${back}Z`, class: "st-gap" }, svg);
+      }
       for (const [col, cls] of [[1, "c5"], [2, "c0"]]) {
         if (col === 2 && !huge) continue;
-        s("path", { d: DATA.map((d, i) => `${i ? "L" : "M"}${X(d[0]).toFixed(1)} ${Y(d[col]).toFixed(1)}`).join(""), class: `st-curve ${cls}` }, svg);
+        s("path", { d: line(col), class: `st-curve ${cls}` }, svg);
         DATA.forEach((d, i) => s("circle", { cx: X(d[0]), cy: Y(d[col]), r: i === at ? 6 : 3.5, class: `st-dot ${cls}${i === at ? " is-on" : ""}` }, svg));
       }
+      const last = DATA[DATA.length - 1];
+      label(svg, X(last[0]) - 8, Y(last[1]) - 10, "4 KB pages", "st-tick st-curve-lbl c5", "end");
+      if (huge) label(svg, X(last[0]) - 8, Y(last[2]) + 16, "2 MB pages", "st-tick st-curve-lbl c0", "end");
       const d = DATA[at];
-      const ns = huge ? d[2] : d[1];
       const where = d[0] <= 48 ? "the L1 cache" : d[0] <= 2048 ? "the L2 cache" : d[0] <= 4096 ? "the L3 cache" : "the L3 cache and memory";
-      ui.setCaption(`Data of **${size(d[0])}**, read in a random order where every load needs the one before: **${ns} ns** per load${huge ? " with 2 MB pages" : ""}, about ${Math.round(ns * 3)} clock cycles. It comes from ${where}. ${d[0] >= 16384 ? `Here the TLB misses too: with 2 MB pages this would take ${d[2]} ns instead of ${d[1]}.` : "Small data stay close to the core."}`);
+      const gain = d[1] - d[2];
+      ui.setCaption(`Data of **${size(d[0])}**, read in a random order where every load needs the one before: **${d[1]} ns** per load, about ${Math.round(d[1] * 3)} clock cycles. The data come from ${where}. ${d[0] >= 16384
+        ? `Here the TLB misses too. With 2 MB pages a load takes **${d[2]} ns**: ${gain.toFixed(0)} ns (${Math.round((100 * gain) / d[1])} %) less, the shaded area.`
+        : "Small data stay close to the core, and the page size does not matter."}`);
     }
     draw();
   });
@@ -817,58 +829,96 @@
 
   /* ------------------------------------------------- how full the pages are */
   register("fill-factor", (fig) => {
-    // The pages of the C++ tree: 64 keys, at least 32. The picture runs the
-    // same rules on 20,000 keys; the captions give the C++ numbers for 1,000,000.
-    const CAP = 64, N = 20000;
-    const TEXT = {
-      random: "**Keys in random order.** A full page splits into pages of 33 and 32 keys, and both fill up slowly until they split again. On average a page is about 70 % full (the theory says ln 2 = 69 %). Our C++ tree with 1,000,000 random keys: **70 %**, 24.9 bytes per key.",
-      up: "**Keys in increasing order** (ids, times). Every new key goes to the last leaf. When it splits, the left page keeps 33 keys and never gets another one, so every page stays about half full: **52 %** in our C++ tree, 33.8 bytes per key. Databases split the last page unevenly in this case: PostgreSQL leaves 90 % on the left.",
-      bulk: "**All keys at once** (the bulk load of bplus.cpp). Every leaf gets 64 keys; only the last two may share. **100 %**, 17.2 bytes per key in our C++ tree: the fewest pages and the lowest tree. It took about 10 ms for 1,000,000 keys, where inserts one by one took 60 ms (increasing keys) to 350 ms (random keys).",
-      erased: "**A full tree after erasing a random half of its keys.** Pages get emptier until one falls below 32 keys; then it borrows a key or merges. **59 %** in our C++ tree, 29.0 bytes per key. The tree stays larger than a new one would be, so databases rebuild such an index from time to time (REINDEX in PostgreSQL).",
-    };
-    let mode = "random";
-    const cache = {};
-    function leavesOf(m) {
-      if (cache[m]) return cache[m];
-      const rng = mulberry32(69);
-      const keys = Array.from({ length: N }, (_, i) => i * 7);
-      let t;
-      if (m === "bulk" || m === "erased") {
-        t = bulkTree(CAP, keys);
-        if (m === "erased") for (const k of shuffle(keys.slice(), rng).slice(0, N / 2)) t.erase(k);
-      } else {
-        t = new MiniTree(CAP);
-        for (const k of m === "random" ? shuffle(keys.slice(), rng) : keys) t.insert(k);
-      }
-      const lv = t.levels();
-      cache[m] = { fills: lv[lv.length - 1].map((n) => n.keys.length), height: t.height, size: t.size };
-      return cache[m];
+    // Pages of at most 8 keys (at least 4), with the rules of the C++ tree: a
+    // full leaf that gets a 9th key splits into 5 and 4 keys.
+    const CAP = 8, MAX = 320;
+    let order = "random", rng, tree, pool, next, last;
+    function reset() {
+      rng = mulberry32(26);
+      tree = new MiniTree(CAP);
+      pool = Array.from({ length: MAX }, (_, i) => (i + 1) * 3);
+      if (order === "random") shuffle(pool, rng);
+      next = 0;
+      last = { text: order === "random" ? "An empty tree. The keys will come in a random order." : "An empty tree. The keys will come in increasing order, like ids or times.", mark: {} };
     }
+    reset();
     const ui = frame(fig, { title: "How full are the pages?", kicker: "Try it" });
     ui.stage.classList.add("is-plain");
-    const W = 560, H = 230, M = { l: 34, r: 12, t: 16, b: 30 };
+    const W = 560, H = 200, M = { l: 30, r: 10, t: 12, b: 26 };
     const svg = svgBox(ui.stage, W, H, "st-chart");
+    const stats = h("div", { class: "st-kv st-fill-stats" });
+    ui.stage.appendChild(stats);
     const tools = toolbar(ui);
-    toggle(tools, "Keys come", [["random", "in random order"], ["up", "in increasing order"], ["bulk", "all at once"], ["erased", "all at once, then half erased"]], mode, (m) => { mode = m; draw(); });
-    function draw() {
-      const { fills, height, size } = leavesOf(mode);
-      svg.textContent = "";
-      const X = (i) => M.l + i / fills.length * (W - M.l - M.r);
-      const Y = (v) => H - M.b - v / CAP * (H - M.t - M.b);
-      for (const [v, name] of [[0, "0"], [32, "32"], [64, "64"]]) {
-        seg(svg, M.l, Y(v), W - M.r, Y(v), v === 32 ? "st-grid is-min" : "st-grid");
-        label(svg, M.l - 6, Y(v), name, "st-tick", "end");
+    toggle(tools, "Keys come", [["random", "in random order"], ["up", "in increasing order"]], order, (o) => { order = o; reset(); draw(); });
+    tools.appendChild(h("span", { class: "viz-sep" }));
+    const insert = (count) => {
+      const mark = {};
+      let splits = 0, lastKey = null, leftKeys = 0;
+      for (let i = 0; i < count && next < pool.length; i++) {
+        lastKey = pool[next++];
+        const ev = tree.insert(lastKey);
+        for (const e of ev) {
+          if (e.type === "insert") mark[e.node] = mark[e.node] || "cur";
+          if (e.type === "split") { mark[e.node] = mark[e.other] = "split"; splits++; leftKeys = CAP + 1 - Math.floor((CAP + 1) / 2); }
+        }
       }
-      let d = `M${X(0).toFixed(1)} ${Y(0).toFixed(1)}`;
-      fills.forEach((f, i) => { d += `V${Y(f).toFixed(1)}H${X(i + 1).toFixed(1)}`; });
-      s("path", { d: `${d}V${Y(0).toFixed(1)}Z`, class: "st-area c5" }, svg);
-      const avg = fills.reduce((a, b) => a + b, 0) / fills.length;
-      seg(svg, M.l, Y(avg), W - M.r, Y(avg), "st-avg");
-      label(svg, W - M.r - 4, Y(avg) - 9, `average ${Math.round(avg / CAP * 100)} % full`, "st-tick st-avg-lbl", "end");
-      label(svg, (M.l + W - M.r) / 2, H - 8, `the ${fills.length} leaves, from the smallest keys to the largest`, "st-axis");
-      const yl = label(svg, 12, (M.t + H - M.b) / 2, "keys in the leaf", "st-axis");
-      yl.setAttribute("transform", `rotate(-90 12 ${(M.t + H - M.b) / 2})`);
-      ui.setCaption(`${TEXT[mode]} The picture: ${size.toLocaleString("en-US")} keys in ${fills.length} leaves, ${height} levels.`);
+      if (lastKey == null) return { text: `The figure stops at ${MAX} keys. Erase some, or start again.`, mark: {} };
+      if (count === 1)
+        return splits
+          ? { text: `Inserted ${lastKey}. The leaf was full, so it split (orange): ${leftKeys} keys stay, ${CAP + 1 - leftKeys} move to a new leaf. Both pages are now about half full.${order === "up" ? ` The keys come in increasing order, so no later key goes to the left page: it stays ${leftKeys} of ${CAP} full for ever.` : " Later keys fill both of them again."}`, mark }
+          : { text: `Inserted ${lastKey} into a leaf with room (blue).`, mark };
+      return { text: `Inserted ${count} keys; ${splits} leaf split${splits === 1 ? "" : "s"}.`, mark: {} };
+    };
+    button(tools, "Insert 1", () => { last = insert(1); draw(); }, "is-primary");
+    button(tools, "Insert 20", () => { last = insert(20); draw(); });
+    button(tools, "Insert all", () => { last = insert(MAX); draw(); });
+    button(tools, "Erase 20", () => {
+      const keys = tree.scan(-Infinity, Infinity).out;
+      if (!keys.length) { last = { text: "The tree is empty.", mark: {} }; draw(); return; }
+      const mark = {};
+      let merges = 0, borrows = 0;
+      for (const k of shuffle(keys, rng).slice(0, 20)) for (const e of tree.erase(k)) {
+        if (e.type === "merge") { merges++; mark[e.node] = "merge"; }
+        if (e.type === "borrow") { borrows++; mark[e.node] = "merge"; }
+      }
+      last = { text: `Erased ${Math.min(20, keys.length)} random keys. The pages got emptier; ${borrows} page${borrows === 1 ? "" : "s"} borrowed a key and ${merges} pair${merges === 1 ? "" : "s"} of pages merged (purple), because a page must keep at least ${CAP / 2} keys.`, mark };
+      draw();
+    });
+    button(tools, "Bulk load", () => {
+      const keys = tree.scan(-Infinity, Infinity).out;
+      tree = bulkTree(CAP, keys);
+      last = { text: `The same ${keys.length} keys, loaded at once from sorted order: every leaf is full, only the last two may share.`, mark: {} };
+      draw();
+    });
+    button(tools, "Reset", () => { reset(); draw(); });
+    function draw() {
+      const lv = tree.levels();
+      const leaves = lv[lv.length - 1];
+      const n = tree.size;
+      svg.textContent = "";
+      const cw = (W - M.l - M.r) / Math.max(leaves.length, 24);
+      const ch = (H - M.t - M.b) / CAP;
+      const Y = (v) => H - M.b - v * ch;
+      for (const v of [0, CAP / 2, CAP]) {
+        seg(svg, M.l, Y(v), W - M.r, Y(v), v === CAP / 2 ? "st-grid is-min" : "st-grid");
+        label(svg, M.l - 6, Y(v), String(v), "st-tick", "end");
+      }
+      leaves.forEach((leaf, i) => {
+        const x = M.l + i * cw;
+        const cls = last.mark[leaf.id] ? ` is-${last.mark[leaf.id]}` : "";
+        rect(svg, x + 1, Y(CAP), Math.max(1, cw - 2), CAP * ch, `st-leafbox${cls}`, 2);
+        if (leaf.keys.length) rect(svg, x + 1, Y(leaf.keys.length), Math.max(1, cw - 2), leaf.keys.length * ch, `st-leaffill${cls}`, 2);
+      });
+      const fill = n && leaves.length ? n / (leaves.length * CAP) : 0;
+      if (n) {
+        seg(svg, M.l, Y(fill * CAP), W - M.r, Y(fill * CAP), "st-avg");
+        label(svg, W - M.r - 4, Y(fill * CAP) - 8, `average ${Math.round(fill * 100)} % full`, "st-tick st-avg-lbl", "end");
+      }
+      label(svg, (M.l + W - M.r) / 2, H - 6, "the leaves, from the smallest keys to the largest", "st-axis");
+      stats.textContent = "";
+      const best = Math.ceil(n / CAP);
+      for (const [k, v] of [["keys", n], ["leaves", leaves.length], ["full leaves would need", best], ["levels", tree.height]]) stats.append(h("span", { text: k }), h("b", { text: String(v) }));
+      ui.setCaption(`${last.text} ${n ? `Now ${n} keys in ${leaves.length} leaves: on average **${Math.round(fill * 100)} %** full.` : ""}`);
     }
     draw();
   });
@@ -1066,33 +1116,37 @@
   register("slotted-page", (fig) => {
     // A toy page of 512 bytes (real pages have 4096), with the rules of page.hpp.
     const PAGE = 512, HEADER = 8, SLOT = 4;
-    let rng, page;
+    let page, size = 24;
     const freeBegin = () => HEADER + SLOT * page.slots.length;
+    const freeGap = () => page.freeEnd - freeBegin();
     function compact() {
-      const live = page.slots.filter((s) => s.off).sort((a, b) => b.off - a.off);
+      const live = page.slots.filter((x) => x.off).sort((a, b) => b.off - a.off);
       let end = PAGE;
-      for (const s of live) {
-        end -= s.len;
-        s.off = end;
+      for (const x of live) {
+        end -= x.len;
+        x.off = end;
       }
       page.freeEnd = end;
       page.garbage = 0;
     }
-    function insert(len) {
-      let slot = page.slots.findIndex((s) => s.off === 0);
+    // What an insert of len bytes would do: the slot, the bytes it needs, and whether it fits.
+    function plan(len) {
+      let slot = page.slots.findIndex((x) => x.off === 0);
       const fresh = slot < 0;
       if (fresh) slot = page.slots.length;
-      const need = len + (fresh ? SLOT : 0), free = page.freeEnd - freeBegin();
-      if (free < need && free + page.garbage < need) return { ok: false, len, need, free, garbage: page.garbage };
-      const compacted = free < need;
-      if (compacted) compact();
+      const need = len + (fresh ? SLOT : 0);
+      return { slot, fresh, need, fits: freeGap() >= need, afterCompact: freeGap() < need && freeGap() + page.garbage >= need };
+    }
+    function insert(len) {
+      const r = plan(len);
+      if (!r.fits && !r.afterCompact) return r;
+      if (r.afterCompact) compact();
       page.freeEnd -= len;
-      if (fresh) page.slots.push({ off: 0, len: 0 });
-      page.slots[slot] = { off: page.freeEnd, len };
-      return { ok: true, slot, len, fresh, compacted };
+      if (r.fresh) page.slots.push({ off: 0, len: 0 });
+      page.slots[r.slot] = { off: page.freeEnd, len };
+      return r;
     }
     function reset() {
-      rng = mulberry32(27);
       page = { freeEnd: PAGE, garbage: 0, slots: [] };
       for (const len of [40, 72, 28, 56, 36]) insert(len);
     }
@@ -1101,166 +1155,172 @@
     ui.stage.classList.add("is-plain");
     const W = 640, H = 118, X0 = 16, X1 = 624;
     const svg = svgBox(ui.stage, W, H, "st-page-svg");
+    const bytes = h("div", { class: "st-bytes" });
     const list = h("div", { class: "st-slotlist" });
-    ui.stage.appendChild(list);
+    ui.stage.append(bytes, list);
     const tools = toolbar(ui);
+    slider(tools, "Record size", { min: 8, max: 120, step: 4, value: size, format: (v) => `${v} bytes` }, (v) => { size = v; draw(); });
+    const insertBtn = button(tools, "Insert", () => {
+      const r = insert(size);
+      ui.setCaption(r.fits || r.afterCompact
+        ? `Inserted ${size} bytes as slot ${r.slot}: ${r.fresh ? `a new slot, so the slot array grew by ${SLOT} bytes` : "it reused the smallest free slot"}. The record went just below free_end.${r.afterCompact ? " The free space was too small, but with the garbage it was enough, so the page compacted first." : ""}`
+        : `Does not fit: the record needs ${size} bytes${r.fresh ? ` plus ${SLOT} for a new slot, ${r.need} bytes in all` : ""}, and the page has only ${freeGap()} bytes of free space and ${page.garbage} bytes of garbage. A database puts the record into another page. Erase a record (click it), or choose a smaller size.`);
+      draw();
+    }, "is-primary");
+    button(tools, "Compact", () => {
+      compact();
+      ui.setCaption("Compacted: the records moved together at the end of the page, the garbage became free space, and every record kept its slot number.");
+      draw();
+    });
+    button(tools, "Reset", () => { reset(); ui.setCaption("Five records in a page of 512 bytes (a real page has 4096). Click a record to erase it."); draw(); });
     const bx = (b) => X0 + (b / PAGE) * (X1 - X0);
+    function erase(i) {
+      const len = page.slots[i].len;
+      page.garbage += len;
+      page.slots[i] = { off: 0, len: 0 };
+      ui.setCaption(`Erased slot ${i}: its ${len} bytes are garbage now, and the slot is free for the next insert. Nothing moved, so the record ids of the other records stay valid.`);
+      draw();
+    }
     function draw() {
       svg.textContent = "";
       const y = 22, hh = 40;
       rect(svg, bx(0), y, bx(PAGE) - bx(0), hh, "st-pg-free", 3);
       rect(svg, bx(0), y, bx(HEADER) - bx(0), hh, "st-pg-header", 2);
-      page.slots.forEach((s, i) => rect(svg, bx(HEADER + SLOT * i) + 0.5, y + 4, bx(SLOT) - bx(0) - 1, hh - 8, s.off ? `st-pg-slot c${i % 6}` : "st-pg-slot is-free", 1));
+      page.slots.forEach((x, i) => rect(svg, bx(HEADER + SLOT * i) + 0.5, y + 4, bx(SLOT) - bx(0) - 1, hh - 8, x.off ? `st-pg-slot c${i % 6}` : "st-pg-slot is-free", 1));
       // garbage: the records area minus the live records
-      const live = page.slots.filter((s) => s.off).sort((a, b) => a.off - b.off);
+      const live = page.slots.filter((x) => x.off).sort((a, b) => a.off - b.off);
       let at = page.freeEnd;
-      for (const s of [...live, { off: PAGE, len: 0 }]) {
-        if (s.off > at) rect(svg, bx(at), y, bx(s.off) - bx(at), hh, "st-pg-garbage", 0);
-        at = Math.max(at, s.off + s.len);
+      for (const x of [...live, { off: PAGE, len: 0 }]) {
+        if (x.off > at) rect(svg, bx(at), y, bx(x.off) - bx(at), hh, "st-pg-garbage", 0);
+        at = Math.max(at, x.off + x.len);
       }
-      page.slots.forEach((s, i) => {
-        if (!s.off) return;
-        rect(svg, bx(s.off) + 0.5, y, bx(s.off + s.len) - bx(s.off) - 1, hh, `st-pg-rec c${i % 6}`, 2);
-        if (bx(s.off + s.len) - bx(s.off) > 18) label(svg, (bx(s.off) + bx(s.off + s.len)) / 2, y + hh / 2, String(i), "st-pg-lbl");
+      page.slots.forEach((x, i) => {
+        if (!x.off) return;
+        const r = rect(svg, bx(x.off) + 0.5, y, bx(x.off + x.len) - bx(x.off) - 1, hh, `st-pg-rec c${i % 6} is-click`, 2);
+        r.addEventListener("click", () => erase(i));
+        r.appendChild(s("title", {})).textContent = `slot ${i}: ${x.len} bytes at offset ${x.off}. Click to erase.`;
+        if (bx(x.off + x.len) - bx(x.off) > 18) label(svg, (bx(x.off) + bx(x.off + x.len)) / 2, y + hh / 2, String(i), "st-pg-lbl");
       });
-      // byte 0 and 512 on the first line, free_begin and free_end on the second
       const marks = [[0, "0", 0, "start"], [PAGE, String(PAGE), 0, "end"], [freeBegin(), "free_begin", 1, "start"], [page.freeEnd, "free_end", 1, "end"]];
-      marks.forEach(([b, name, line, anchor]) => {
-        seg(svg, bx(b), y + hh, bx(b), y + hh + 6 + 14 * line, "st-grid");
-        label(svg, bx(b) + (anchor === "start" ? 3 : -3) * line, y + hh + 16 + 14 * line, name, "st-tick", anchor);
+      marks.forEach(([b, name, ln, anchor]) => {
+        seg(svg, bx(b), y + hh, bx(b), y + hh + 6 + 14 * ln, "st-grid");
+        label(svg, bx(b) + (anchor === "start" ? 3 : -3) * ln, y + hh + 16 + 14 * ln, name, "st-tick", anchor);
       });
       label(svg, bx(HEADER / 2), y - 9, "header", "st-tick", "start");
-      label(svg, (bx(freeBegin()) + bx(page.freeEnd)) / 2, y - 9, `free: ${page.freeEnd - freeBegin()} B`, "st-tick");
-      if (page.garbage) label(svg, bx(PAGE), y - 9, `garbage: ${page.garbage} B`, "st-tick", "end");
+      // the bytes of the page, and what the next insert needs
+      const r = plan(size);
+      const used = live.reduce((a, x) => a + x.len, 0);
+      bytes.textContent = "";
+      for (const [k, v, cls] of [["header", HEADER, ""], ["slot array", SLOT * page.slots.length, ""], ["free space", freeGap(), "is-free"], ["garbage", page.garbage, "is-garbage"], ["records", used, ""]])
+        bytes.append(h("span", { class: `st-byte ${cls}` }, h("i", { text: k }), h("b", { text: `${v} B` })));
+      bytes.append(h("span", { class: `st-byte is-need ${r.fits ? "is-ok" : r.afterCompact ? "is-warn" : "is-bad"}` }, h("i", { text: "next insert needs" }),
+        h("b", { text: `${size}${r.fresh ? ` + ${SLOT}` : ""} = ${r.need} B: ${r.fits ? "fits" : r.afterCompact ? "fits after compacting" : "does not fit"}` })));
+      insertBtn.disabled = false;
       list.textContent = "";
-      list.append(cells(page.slots.map((s, i) => (s.off ? `${i}: ${s.off}+${s.len}` : `${i}: free`)), (i) => (page.slots[i].off ? `c${i % 6}` : "is-dim"), "slots"));
+      const row = cells(page.slots.map((x, i) => (x.off ? `${i}: ${x.off}+${x.len}` : `${i}: free`)), (i) => (page.slots[i].off ? `c${i % 6} is-click` : "is-dim"), "slots");
+      row.querySelectorAll(".st-cell").forEach((el, i) => { if (page.slots[i].off) el.addEventListener("click", () => erase(i)); });
+      list.append(row);
     }
-    const act = (name, f) => button(tools, name, () => { ui.setCaption(f()); draw(); });
-    const describe = (r) => (r.ok
-      ? `Inserted ${r.len} bytes as slot ${r.slot}, ${r.fresh ? "a new slot (4 more bytes of slot array)" : "the smallest free slot"}, just below free_end.${r.compacted ? " The free space was too small, but with the garbage it was enough, so the page compacted first." : ""}`
-      : `No room for ${r.len} bytes: with ${r.need > r.len ? "a new slot" : "its slot"} they need ${r.need} bytes, and the page has ${r.free} free and ${r.garbage} of garbage. A database would use another page.`);
-    act("Insert small", () => describe(insert(12 + Math.floor(rng() * 32))));
-    act("Insert large", () => describe(insert(60 + Math.floor(rng() * 70))));
-    act("Erase", () => {
-      const live = page.slots.map((s, i) => i).filter((i) => page.slots[i].off);
-      if (!live.length) return "The page has no records.";
-      const i = live[Math.floor(rng() * live.length)];
-      const len = page.slots[i].len;
-      page.garbage += len;
-      page.slots[i] = { off: 0, len: 0 };
-      return `Erased slot ${i}: its ${len} bytes are garbage now, and the slot is free for the next insert. Nothing moved.`;
-    });
-    act("Compact", () => {
-      compact();
-      return "Compacted: the records moved together at the end of the page, the garbage became free space, and every record kept its slot number.";
-    });
-    act("Reset", () => { reset(); return "Five records in a page of 512 bytes (a real page has 4096)."; });
-    ui.setCaption("Five records in a page of 512 bytes (a real page has 4096). The slots grow from the left, the records from the right; each record has the color of its slot.");
+    ui.setCaption("Five records in a page of 512 bytes (a real page has 4096). The slots grow from the left, the records from the right; each record has the colour of its slot. Choose a size and insert, or click a record to erase it.");
     draw();
   });
 
   /* ------------------------------------------------- a buffer pool with CLOCK */
   register("buffer-pool", (fig) => {
-    const FRAMES = 6;
-    // fetch page p; `hold`: stays pinned during the next requests; `dirty`: changed
-    const REQUESTS = [
-      { p: 1 }, { p: 2 }, { p: 3, hold: 10 }, { p: 1 }, { p: 4, dirty: true }, { p: 2 }, { p: 5 }, { p: 1 }, { p: 6 },
-      { p: 7 }, { p: 2 }, { p: 1 }, { p: 8, dirty: true }, { p: 9 }, { p: 1 }, { p: 2 }, { p: 4 }, { p: 10 }, { p: 1 },
-    ];
+    const FRAMES = 4;
+    // The requests: read or write page p; `until`: a long scan keeps the page
+    // pinned until that request (its index in this list).
+    const REQUESTS = [{ p: 1 }, { p: 2 }, { p: 3, until: 9 }, { p: 4, write: true }, { p: 2 }, { p: 5 }, { p: 2 }, { p: 6 }, { p: 2 }, { p: 7 }, { p: 2 }];
     const frames = [];
     {
       const fr = Array.from({ length: FRAMES }, () => ({ page: null, pins: 0, ref: 0, dirty: false }));
-      const table = new Map();
-      let hand = 0, reads = 0, writes = 0, hits = 0, unused = 0;
-      const held = [];  // {frame, until, dirty}
-      const snap = () => fr.map((f) => ({ ...f }));
-      frames.push({ fr: snap(), hand, req: -1, reads, writes, hits, sweep: [], cap: `${FRAMES} empty frames, and a list of page requests. A request pins the page while it is used: most pages are unpinned at once, page 3 stays pinned for a while.` });
+      const where = new Map();
+      let hand = 0, unused = 0;
+      const n = { hits: 0, misses: 0, reads: 0, writes: 0 };
+      const held = [];  // [frame, until]
+      const snap = (k, cap, focus = {}) => frames.push({ fr: fr.map((f) => ({ ...f })), hand: focus.handAt ?? hand, req: k, n: { ...n }, cap, focus });
+      snap(-1, `A buffer pool with ${FRAMES} frames, and a list of requests. The hand of CLOCK starts at frame 0. Every request pins its page while it is used; page 3 stays pinned while a long scan reads it.`);
       REQUESTS.forEach((r, k) => {
-        for (let i = held.length - 1; i >= 0; i--) if (held[i].until < k) { const f = fr[held[i].frame]; f.pins--; f.dirty = f.dirty || held[i].dirty; held.splice(i, 1); }
-        let f, cap, sweep = [];
-        if (table.has(r.p)) {
-          f = table.get(r.p);
-          fr[f].pins++;
+        for (let i = held.length - 1; i >= 0; i--) if (held[i][1] === k) { fr[held[i][0]].pins--; held.splice(i, 1); snap(k, `The scan is done with page 3: it is unpinned, so CLOCK may evict it again.`, { frame: where.get(3) }); }
+        const verb = r.write ? "Write" : "Read";
+        if (where.has(r.p)) {
+          const f = where.get(r.p);
           fr[f].ref = 1;
-          hits++;
-          cap = `Page ${r.p} is in frame ${f}: a hit. Its reference bit is set again, and nothing is read.`;
+          n.hits++;
+          if (r.write) fr[f].dirty = true;
+          snap(k, `${verb} page ${r.p}: it is in frame ${f}, a **hit**. Its reference bit is set (it may be set already). That is all: no list to update, no lock.`, { frame: f, hit: true });
+          return;
+        }
+        n.misses++;
+        let f;
+        if (unused < FRAMES) {
+          f = unused++;
+          snap(k, `${verb} page ${r.p}: not in the pool, a **miss**. Frame ${f} has never held a page, so it is free.`, { frame: f });
         } else {
-          let note = "";
-          if (unused < FRAMES) {
-            f = unused++;
-            note = `frame ${f} has never held a page.`;
-          } else {
-            for (;;) {
-              const g = fr[hand];
-              const at = hand;
+          snap(k, `${verb} page ${r.p}: not in the pool, a **miss**. Every frame holds a page, so CLOCK must find a victim. The hand starts at frame ${hand}.`, { frame: hand });
+          for (;;) {
+            const g = fr[hand];
+            const at = hand;
+            if (g.pins > 0) {
               hand = (hand + 1) % FRAMES;
-              if (g.pins > 0) { sweep.push([at, "skip"]); continue; }
-              if (g.ref) { g.ref = 0; sweep.push([at, "clear"]); continue; }
-              sweep.push([at, "victim"]);
-              f = at;
-              break;
+              snap(k, `Frame ${at} (page ${g.page}) is pinned: someone uses its bytes now. Skip it; its bit stays as it is.`, { frame: at, skip: true, handAt: at });
+              continue;
             }
-            const cleared = sweep.filter(([, a]) => a === "clear").map(([x]) => x), skipped = sweep.filter(([, a]) => a === "skip").map(([x]) => x);
-            const old = fr[f];
-            note = `every frame holds a page, so the hand moves:${cleared.length ? ` it clears the bits of frame${cleared.length > 1 ? "s" : ""} ${cleared.join(", ")},` : ""}${skipped.length ? ` skips frame ${skipped.join(", ")} (pinned),` : ""} and evicts frame ${f} (page ${old.page}, its bit was clear).${old.dirty ? ` Page ${old.page} was dirty, so it is written to the disk first.` : ""}`;
-            if (old.dirty) writes++;
-            table.delete(old.page);
+            if (g.ref) {
+              g.ref = 0;
+              hand = (hand + 1) % FRAMES;
+              snap(k, `Frame ${at} (page ${g.page}): its bit was 1, so the page was used since the hand passed last. **Second chance**: clear the bit and move on.`, { frame: at, clear: true, handAt: at });
+              continue;
+            }
+            hand = (hand + 1) % FRAMES;
+            f = at;
+            snap(k, `Frame ${at} (page ${g.page}): its bit is 0, so the page was not used for a whole turn of the hand. It is the **victim**.`, { frame: at, victim: true, handAt: at });
+            break;
           }
-          reads++;
-          fr[f] = { page: r.p, pins: 1, ref: 1, dirty: false };
-          table.set(r.p, f);
-          cap = `Page ${r.p} is not in the pool: ${note} Then page ${r.p} is read into frame ${f}.`;
+          const old = fr[f];
+          if (old.dirty) {
+            n.writes++;
+            snap(k, `Page ${old.page} is dirty: it was changed in memory. It is written to the disk first, or the change would be lost.`, { frame: f, victim: true, write: true, handAt: f });
+          }
+          where.delete(old.page);
         }
-        if (r.hold) held.push({ frame: f, until: k + r.hold, dirty: !!r.dirty });
-        else {
-          fr[f].pins--;
-          fr[f].dirty = fr[f].dirty || !!r.dirty;
-          if (r.dirty) cap += ` The request changes the page: it is dirty now.`;
-        }
-        frames.push({ fr: snap(), hand, req: k, reads, writes, hits, sweep, cap });
+        n.reads++;
+        fr[f] = { page: r.p, pins: 1, ref: 1, dirty: !!r.write };
+        where.set(r.p, f);
+        if (r.until) held.push([f, r.until]);
+        else fr[f].pins = 0;
+        snap(k, `Page ${r.p} is read from the disk into frame ${f}, and its bit is set.${r.write ? " The request changes it: the page is dirty now." : ""}${r.until ? " The scan keeps it pinned." : ""} The hand stays at frame ${hand} for the next miss.`, { frame: f, load: true });
       });
-      frames[frames.length - 1].cap += ` In all: ${hits} hits, ${reads} pages read, ${writes} written.`;
+      frames[frames.length - 1].cap += ` In all: ${n.hits} hits and ${n.misses} misses. Page 2 is used often, so its bit is set again before the hand comes back: it was never evicted.`;
     }
-    const ui = frame(fig, { title: "A buffer pool with CLOCK", kicker: "Animation", split: true });
+    const ui = frame(fig, { title: "A buffer pool with CLOCK", kicker: "Animation" });
     ui.stage.classList.add("is-plain");
-    const W = 420, H = 300, CX = 210, CY = 150, R = 104;
-    const svg = svgBox(ui.stage, W, H, "st-pool");
-    const reqs = h("div", { class: "st-reqs" });
-    ui.stage.appendChild(reqs);
-    const side = h("div", { class: "st-side" });
-    ui.side.appendChild(side);
-    const pos = (i) => [CX + R * Math.sin((2 * Math.PI * i) / FRAMES), CY - R * Math.cos((2 * Math.PI * i) / FRAMES)];
+    const box = h("div", { class: "st-clock" });
+    ui.stage.appendChild(box);
     new Player(fig, {
-      frames, interval: 1700,
+      frames, interval: 1800,
       apply: (f) => {
-        svg.textContent = "";
-        s("circle", { cx: CX, cy: CY, r: R, class: "st-dial" }, svg);
-        const marks = new Map(f.sweep);
-        const [hx, hy] = pos(f.hand);
-        s("path", { d: `M${CX} ${CY} L${(CX + (hx - CX) * 0.62).toFixed(1)} ${(CY + (hy - CY) * 0.62).toFixed(1)}`, class: "st-hand" }, svg);
-        s("circle", { cx: CX, cy: CY, r: 5, class: "st-hand-hub" }, svg);
+        box.textContent = "";
+        box.append(cells(REQUESTS.map((r) => `${r.write ? "W" : "R"} ${r.p}`), (i) => (i === f.req ? "is-cur" : i < f.req ? "is-dim" : ""), "requests"));
+        const row = h("div", { class: "st-frames" });
         f.fr.forEach((fr, i) => {
-          const [x, y] = pos(i);
-          const m = marks.get(i);
-          const cur = f.req >= 0 && fr.page === REQUESTS[f.req].p;
-          rect(svg, x - 34, y - 24, 68, 48, `st-frame${fr.pins ? " is-pinned" : ""}${m === "victim" ? " is-victim" : cur ? " is-cur" : ""}`, 8);
-          label(svg, x, y - 3, fr.page == null ? "–" : `page ${fr.page}`, "st-frame-lbl");
-          s("circle", { cx: x - 25, cy: y + 13, r: 4.5, class: `st-refbit${fr.ref ? " is-on" : ""}` }, svg);
-          label(svg, x - 17, y + 13.5, "ref", "st-mini", "start");
-          if (fr.pins) label(svg, x + 30, y + 13.5, `pin ${fr.pins}`, "st-mini is-pin", "end");
-          else if (fr.dirty) label(svg, x + 30, y + 13.5, "dirty", "st-mini is-dirty", "end");
-          if (m === "clear") label(svg, x, y - 32, "bit cleared", "st-mini is-clear");
-          if (m === "skip") label(svg, x, y - 32, "pinned: skipped", "st-mini is-pin");
-          label(svg, x, y + 36, `frame ${i}`, "st-tick");
+          const on = f.focus.frame === i;
+          const state = on ? (f.focus.victim ? " is-victim" : f.focus.load ? " is-load" : f.focus.hit ? " is-hit" : f.focus.skip ? " is-skip" : " is-cur") : "";
+          row.append(h("div", { class: `st-frame-box${state}` },
+            h("div", { class: "st-fhand", text: f.hand === i ? "▼ hand" : "" }),
+            h("div", { class: "st-frame-name", text: `frame ${i}` }),
+            h("div", { class: "st-frame-page", text: fr.page == null ? "empty" : `page ${fr.page}` }),
+            h("div", { class: "st-frame-flags" },
+              h("span", { class: `st-flag${fr.ref ? " is-on" : ""}`, text: `bit ${fr.ref}` }),
+              h("span", { class: `st-flag${fr.pins ? " is-pin" : ""}`, text: fr.pins ? "pinned" : "unpinned" }),
+              h("span", { class: `st-flag${fr.dirty ? " is-dirty" : ""}`, text: fr.dirty ? "dirty" : "clean" }))));
         });
-        reqs.textContent = "";
-        reqs.append(cells(REQUESTS.map((r) => `${r.p}${r.hold ? "·" : ""}${r.dirty ? "*" : ""}`), (i) => (i === f.req ? "is-cur" : i < f.req ? "is-dim" : ""), "requests"));
-        side.textContent = "";
-        side.append(panel("disk", null, h("div", { class: "st-kv" },
-          h("span", { text: "hits" }), h("b", { text: String(f.hits) }),
-          h("span", { text: "pages read" }), h("b", { text: String(f.reads) }),
-          h("span", { text: "pages written" }), h("b", { text: String(f.writes) }))),
-          h("p", { class: "st-note", text: "· stays pinned for a while   * changes the page" }));
+        box.append(row, h("div", { class: "st-wrap", text: "after the last frame, the hand goes back to frame 0" }));
+        box.append(h("div", { class: "st-kv" },
+          h("span", { text: "hits" }), h("b", { text: String(f.n.hits) }),
+          h("span", { text: "misses" }), h("b", { text: String(f.n.misses) }),
+          h("span", { text: "pages read" }), h("b", { text: String(f.n.reads) }),
+          h("span", { text: "pages written" }), h("b", { text: String(f.n.writes) })));
         ui.setCaption(f.cap);
       },
     });
@@ -1520,30 +1580,61 @@
       for (const k of trace) hits += sim.access(k).hit ? 1 : 0;
       return hits / trace.length;
     }
+    // Belady's OPT: on a miss, evict the key whose next use is the farthest
+    // in the future. No real cache knows the future; OPT shows the best
+    // possible hit ratio. A max-heap of [next use, key] with lazy deletion.
+    function opt(trace, cap) {
+      const nextUse = new Array(trace.length);
+      const seen = new Map();
+      for (let i = trace.length - 1; i >= 0; i--) { nextUse[i] = seen.has(trace[i]) ? seen.get(trace[i]) : Infinity; seen.set(trace[i], i); }
+      const when = new Map();  // key in the cache -> its next use
+      const heap = [];
+      const push = (x) => { heap.push(x); let i = heap.length - 1; while (i) { const p = (i - 1) >> 1; if (heap[p][0] >= heap[i][0]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; } };
+      const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && heap[l][0] > heap[m][0]) m = l; if (r < heap.length && heap[r][0] > heap[m][0]) m = r; if (m === i) break; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } } return top; };
+      let hits = 0;
+      trace.forEach((k, i) => {
+        if (when.has(k)) hits++;
+        else if (when.size === cap) {
+          for (;;) { const [t, v] = pop(); if (when.get(v) === t) { when.delete(v); break; } }  // skip stale entries
+        }
+        when.set(k, nextUse[i]);
+        push([nextUse[i], k]);
+      });
+      return hits / trace.length;
+    }
     let trace = "scans", size = 300;
     const ui = frame(fig, { title: "LRU, CLOCK and W-TinyLFU", kicker: "Try it" });
     ui.stage.classList.add("is-plain");
-    const W = 560, H = 210, M = { l: 112, r: 60, t: 14, b: 26 };
+    const W = 560, H = 236, M = { l: 112, r: 60, t: 14, b: 26 };
     const svg = svgBox(ui.stage, W, H, "st-chart");
     const tools = toolbar(ui);
     toggle(tools, "Trace", Object.keys(NAMES).map((k) => [k, NAMES[k]]), trace, (v) => { trace = v; draw(); });
     slider(tools, "Cache size", { min: 50, max: 800, step: 50, value: size, format: (v) => `${v} keys` }, (v) => { size = v; draw(); });
     function draw() {
       const t = traceOf(trace);
-      const res = [["LRU", lru(t, size), "c5"], ["CLOCK", clock(t, size), "c1"], ["W-TinyLFU", wtinylfu(t, size), "c2"]];
+      const res = [["LRU", lru(t, size), "c5"], ["CLOCK", clock(t, size), "c1"], ["W-TinyLFU", wtinylfu(t, size), "c2"], ["OPT (knows the future)", opt(t, size), "is-opt"]];
       svg.textContent = "";
       const X = (v) => M.l + v * (W - M.l - M.r);
       for (const v of [0, 0.25, 0.5, 0.75, 1]) { seg(svg, X(v), M.t, X(v), H - M.b, "st-grid"); label(svg, X(v), H - M.b + 14, `${v * 100} %`, "st-tick"); }
       const bh = (H - M.t - M.b) / res.length;
       res.forEach(([name, v, cls], i) => {
         const y = M.t + i * bh + 8;
-        label(svg, M.l - 10, y + (bh - 16) / 2, name, "st-axis-name", "end");
+        label(svg, M.l - 10, y + (bh - 16) / 2, name === "OPT (knows the future)" ? "OPT" : name, "st-axis-name", "end");
         rect(svg, X(0), y, X(v) - X(0), bh - 16, `st-bar ${cls}`, 3);
         label(svg, X(v) + 6, y + (bh - 16) / 2, `${(v * 100).toFixed(1)} %`, "st-tick", "start");
       });
-      const best = res.reduce((a, b) => (b[1] > a[1] ? b : a));
-      const why = { zipf: "With Zipf's law alone, recency is a good guess, but frequency is better.", scans: "Every scan of 1500 new keys pushes popular keys out of LRU and CLOCK; W-TinyLFU lets the scans pass through its window.", loop: "A loop larger than the cache is the worst case of LRU: every key is evicted just before it comes back. W-TinyLFU keeps a part of the loop.", shifting: "The popular keys change after every 15,000 accesses: aging lets W-TinyLFU forget the old ones." };
-      ui.setCaption(`Hit ratios for ${NAMES[trace]}, ${N.toLocaleString("en-US")} accesses, a cache of ${size} keys, computed in your browser. ${why[trace]} Best here: ${best[0]}.`);
+      const [l, c, w, o] = res.map((r) => r[1]);
+      const pct = (v) => `${(v * 100).toFixed(1)} %`;
+      let why;
+      if (trace === "loop") {
+        why = size >= 500
+          ? `The loop has 500 keys and the cache has room for all of them: after the first round every policy hits (${pct(l)}).`
+          : `Why is LRU at ${pct(l)}? The loop uses the keys 1, 2, ..., 500 and starts again. After 500 accesses, the key that comes next is always the one that was used longest ago, and LRU has just evicted exactly that key. CLOCK does the same. OPT shows that ${pct(o)} was possible: keep ${size - 1} keys of the loop for ever and let the others pass. W-TinyLFU gets ${pct(w)}, because a new key must be used more often than the victim to enter.`;
+      } else {
+        why = { zipf: "With Zipf's law alone, recency is a good guess, but frequency is better.", scans: "Every scan of 1500 new keys pushes popular keys out of LRU and CLOCK; W-TinyLFU lets the scans pass through its window.", shifting: "The popular keys change after every 15,000 accesses: aging lets W-TinyLFU forget the old ones." }[trace];
+        why += ` OPT, which knows the future, gets ${pct(o)}: no real policy can beat it.`;
+      }
+      ui.setCaption(`Hit ratios for ${NAMES[trace]}: ${N.toLocaleString("en-US")} accesses, a cache of ${size} keys, computed in your browser. ${why}`);
     }
     draw();
   });
@@ -1559,169 +1650,197 @@
 
   /* ------------------------------------------------- linear probing and Robin Hood */
   register("open-addressing", (fig) => {
-    const SIZE = 32, COUNT = 28;  // 7/8 full at the end
-    const rng = mulberry32(28);
-    const KEYS = [];
-    while (KEYS.length < COUNT) { const k = 10 + Math.floor(rng() * 990); if (!KEYS.includes(k)) KEYS.push(k); }
-    const home = (k) => mix32(k) % SIZE;
-    let mode = "linear";
-    function make() {
-      const t = new Array(SIZE).fill(null);  // {key, dist}
-      const frames = [{ t: t.map((x) => x && { ...x }), walk: [], cap: `An empty table of ${SIZE} slots. ${mode === "linear" ? "Linear probing" : "Robin Hood hashing"} inserts ${COUNT} keys, until the table is 7/8 full. Each slot shows its key and how far it is from its home slot.` }];
-      for (const key of KEYS) {
-        let k = key, d = 0, i = home(key);
-        const walk = [], swaps = [];
-        for (;;) {
-          walk.push(i);
-          if (!t[i]) { t[i] = { key: k, dist: d }; break; }
-          if (mode === "robin" && t[i].dist < d) {
-            swaps.push([t[i].key, t[i].dist, i]);
-            const old = t[i];
-            t[i] = { key: k, dist: d };
-            k = old.key;
-            d = old.dist;
-          }
-          i = (i + 1) % SIZE;
-          d++;
+    // 13 keys in 16 slots, with the home slots that their hashes give. Both
+    // tables get the same keys in the same order.
+    const SIZE = 16;
+    const KEYS = [["A", 2], ["B", 2], ["C", 3], ["D", 2], ["E", 4], ["F", 7], ["G", 3], ["H", 8], ["I", 2], ["J", 9], ["K", 12], ["L", 12], ["M", 5]];
+    const lin = new Array(SIZE).fill(null), rh = new Array(SIZE).fill(null);
+    const copy = (t) => t.map((x) => x && { ...x });
+    const frames = [{ lin: copy(lin), rh: copy(rh), cap: "Two empty tables of 16 slots. The same 13 keys go into both: on the top with linear probing, at the bottom with Robin Hood hashing. Each slot shows its key and how far the key is from its home slot." }];
+    const walkTo = (t, home, stop) => { const w = []; for (let i = home, d = 0; ; i = (i + 1) % SIZE, d++) { w.push(i); if (stop(t[i], d)) return w; } };
+    for (const [k, home] of KEYS) {
+      const walkL = walkTo(lin, home, (x) => !x);
+      const endL = walkL[walkL.length - 1];
+      lin[endL] = { k, d: walkL.length - 1 };
+      let key = k, d = 0, j = home;
+      const walkR = [], swaps = [];
+      for (;;) {
+        walkR.push(j);
+        if (!rh[j]) { rh[j] = { k: key, d }; break; }
+        if (rh[j].d < d) {
+          swaps.push({ at: j, out: rh[j].k, outD: rh[j].d, inn: key, inD: d });
+          const o = rh[j];
+          rh[j] = { k: key, d };
+          key = o.k;
+          d = o.d;
         }
-        const placed = walk[walk.length - 1];
-        let cap = `Key ${key}: home slot ${home(key)}${walk.length > 1 ? `, taken; it walks ${walk.length - 1} slot${walk.length > 2 ? "s" : ""} to the right` : ", free"}.`;
-        if (swaps.length) cap = `Key ${key}: home slot ${home(key)}. ${swaps.map(([sk, sd, si]) => `At slot ${si} it meets ${sk}, only ${sd} from home: the newcomer takes the slot, and ${sk} walks on`).join("; ")}. The walk ends at slot ${placed}.`;
-        frames.push({ t: t.map((x) => x && { ...x }), walk, key, cap });
+        j = (j + 1) % SIZE;
+        d++;
       }
-      // the cost of a lookup for a missing key, from every home slot
-      let miss = 0;
-      for (let s = 0; s < SIZE; s++) {
-        let i = s, d = 0, read = 0;
-        for (;;) {
-          read++;
-          if (!t[i] || (mode === "robin" && t[i].dist < d)) break;
-          i = (i + 1) % SIZE;
-          d++;
-        }
-        miss += read;
-      }
-      const dists = t.filter(Boolean).map((x) => x.dist);
-      const last = frames[frames.length - 1];
-      last.stats = { avg: dists.reduce((a, b) => a + b, 0) / dists.length, max: Math.max(...dists), miss: miss / SIZE };
-      last.cap += ` Full: on average ${last.stats.avg.toFixed(2)} slots from home, at most ${last.stats.max}; a lookup for a missing key reads ${last.stats.miss.toFixed(1)} slots on average.`;
-      return frames;
+      const lt = walkL.length > 1 ? `slots ${home}–${endL - 1} are taken, so ${k} goes to slot ${endL}, ${walkL.length - 1} from home` : `slot ${home} is free`;
+      const rt = swaps.length
+        ? swaps.map((x) => `at slot ${x.at}, ${x.out} is ${x.outD} from home but ${x.inn} is already ${x.inD}, so ${x.inn} takes the slot and ${x.out} walks on`).join("; ")
+        : "no key on the way is closer to its home than the newcomer, so the walk is the same";
+      frames.push({ lin: copy(lin), rh: copy(rh), home, walkL, walkR, swaps: swaps.map((x) => x.at), cur: k, cap: `Insert **${k}**, home slot ${home}. Linear probing: ${lt}. Robin Hood: ${rt}.` });
     }
-    const ui = frame(fig, { title: "Linear probing and Robin Hood", kicker: "Try it" });
+    const dist = (t) => t.filter(Boolean).map((x) => x.d);
+    const sum = (a) => a.reduce((x, y) => x + y, 0);
+    const [dl, dr] = [dist(lin), dist(rh)];
+    frames.push({ lin: copy(lin), rh: copy(rh), cap: `Both tables are full to 13 of 16 slots. The total distance from home is ${sum(dl)} in both: Robin Hood only moves keys inside a run. But the longest distance is **${Math.max(...dl)}** with linear probing (key M) and only **${Math.max(...dr)}** with Robin Hood: no key is far from home.` });
+    // Look up M (in the table) and Z (not in the table, home slot 3).
+    const findL = (k, home) => walkTo(lin, home, (x) => !x || x.k === k);
+    const findR = (k, home) => walkTo(rh, home, (x, d) => !x || x.k === k || x.d < d);
+    const mL = findL("M", 5), mR = findR("M", 5);
+    frames.push({ lin: copy(lin), rh: copy(rh), home: 5, walkL: mL, walkR: mR, cur: "M", look: true, cap: `Look up **M** (home slot 5). Linear probing reads ${mL.length} slots, Robin Hood ${mR.length}: M is closer to home there.` });
+    const zL = findL("Z", 3), zR = findR("Z", 3);
+    const stopAt = zR[zR.length - 1];
+    frames.push({ lin: copy(lin), rh: copy(rh), home: 3, walkL: zL, walkR: zR, look: true, cap: `Look up **Z** (home slot 3), which is not in the table. Linear probing must walk to an empty slot: ${zL.length} slots. Robin Hood stops at slot ${stopAt}: ${rh[stopAt].k} there is ${rh[stopAt].d} from home, but Z would already be ${zR.length - 1}. If Z were in the table, it would have taken this slot. ${zR.length} slots.` });
+    const ui = frame(fig, { title: "Linear probing and Robin Hood", kicker: "Animation" });
     ui.stage.classList.add("is-plain");
     const box = h("div", { class: "st-oa" });
     ui.stage.appendChild(box);
-    const tools = toolbar(ui);
-    toggle(tools, "Insert with", [["linear", "linear probing"], ["robin", "Robin Hood"]], mode, (v) => { mode = v; player.setFrames(make()); });
-    const player = new Player(fig, {
-      frames: make(), interval: 900,
+    const row = (name, t, walk, swaps, f) => h("div", { class: "st-cells" }, h("span", { class: "st-rowname", text: name }),
+      ...t.map((x, i) => h("span", { class: `st-cell ${x ? `d${Math.min(x.d, 4)}` : "is-empty"}${walk.has(i) ? " is-walk" : ""}${swaps.has(i) ? " is-swap" : ""}${x && x.k === f.cur && !f.look ? " is-cur" : ""}` },
+        x ? h("b", { text: x.k }) : null, x ? h("small", { text: `+${x.d}` }) : null)));
+    new Player(fig, {
+      frames, interval: 1800,
       apply: (f) => {
         box.textContent = "";
-        const walk = new Set(f.walk || []);
-        for (let row = 0; row < 2; row++) {
-          const idx = Array.from({ length: SIZE / 2 }, (_, j) => row * (SIZE / 2) + j);
-          box.append(cells(idx.map((i) => (f.t[i] ? `${f.t[i].key}` : "")), (j) => {
-            const x = f.t[idx[j]];
-            const cls = x ? `d${Math.min(x.dist, 4)}` : "is-empty";
-            return `${cls}${walk.has(idx[j]) ? " is-walk" : ""}${x && x.key === f.key ? " is-cur" : ""}`;
-          }, `slots ${row * 16}–${row * 16 + 15}`));
-          box.append(cells(idx.map((i) => (f.t[i] ? `+${f.t[i].dist}` : "")), () => "is-dist", "from home"));
-        }
+        box.append(h("div", { class: "st-cells" }, h("span", { class: "st-rowname", text: "slot" }),
+          ...Array.from({ length: SIZE }, (_, i) => h("span", { class: `st-cell is-index${i === f.home ? " is-home" : ""}`, text: i === f.home ? `${i} ⌂` : String(i) }))));
+        box.append(row("linear", f.lin, new Set(f.walkL || []), new Set(), f), row("Robin Hood", f.rh, new Set(f.walkR || []), new Set(f.swaps || []), f));
         ui.setCaption(f.cap);
       },
     });
   });
 
   /* ------------------------------------------------- the Swiss table probe */
+  const SWISS_CODE = `std::optional<Value> find(Key key) const {
+    const std::uint64_t h = hash_key(key, seed);
+    const auto h2 = static_cast<std::int8_t>(h & 127);  // H2
+    std::size_t g = (h >> 7) & (groups() - 1);          // H1
+    for (std::size_t step = 1;; ++step) {
+        const auto* p = reinterpret_cast<const __m128i*>(&ctrl[16 * g]);
+        const __m128i bytes = _mm_loadu_si128(p);
+        const __m128i eq = _mm_cmpeq_epi8(bytes, _mm_set1_epi8(h2));
+        for (unsigned m = _mm_movemask_epi8(eq); m != 0; m &= m - 1) {
+            const std::size_t s = 16 * g + std::countr_zero(m);
+            if (slots[s].key == key)
+                return slots[s].value;
+        }
+        const __m128i empty = _mm_cmpeq_epi8(bytes, _mm_set1_epi8(kEmpty));
+        if (_mm_movemask_epi8(empty) != 0)
+            return std::nullopt;
+        g = (g + step) & (groups() - 1);
+    }
+}`;
   register("swiss-probe", (fig) => {
-    const GROUPS = 4, G = 16;
-    const hashOf = (k) => mix32(k * 2654435761);
-    const H1 = (h) => (h >>> 7) % GROUPS, H2 = (h) => h & 127;
-    // Build a table: group 2 is full, the others partly.
-    const ctrl = new Array(GROUPS * G).fill(-1), keys = new Array(GROUPS * G).fill(null);
-    const rng = mulberry32(11);
+    const GROUPS = 4, G = 16, EMPTY = -128;
+    const hashOf = (k) => mix32(Math.imul(k, 2654435761) >>> 0);
+    const H1 = (x) => (x >>> 7) % GROUPS, H2 = (x) => x & 127;
+    const ctrl = new Array(GROUPS * G).fill(EMPTY), keys = new Array(GROUPS * G).fill(null);
     function insert(k) {
-      const h = hashOf(k);
-      let g = H1(h);
+      const x = hashOf(k);
+      let g = H1(x);
       for (let step = 1; step <= GROUPS; step++) {
-        for (let j = 0; j < G; j++) if (ctrl[g * G + j] < 0) { ctrl[g * G + j] = H2(h); keys[g * G + j] = k; return g; }
+        for (let j = 0; j < G; j++) if (ctrl[g * G + j] === EMPTY) { ctrl[g * G + j] = H2(x); keys[g * G + j] = k; return; }
         g = (g + step) % GROUPS;
       }
-      return -1;
     }
-    const inTable = [];
+    const home = (k) => H1(hashOf(k));
+    const has = (k) => keys.includes(k);
+    // Group 2 gets 16 keys (full); groups 0, 1 and 3 get some keys each.
     let k = 100;
-    // fill group 2 completely with keys whose home is group 2, then add others
-    while (ctrl.slice(2 * G, 3 * G).some((c) => c < 0)) { if (H1(hashOf(k)) === 2) inTable.push(k), insert(k); k++; }
-    for (let n = 0; n < 30; n++) { const x = 1000 + Math.floor(rng() * 9000); if (H1(hashOf(x)) !== 2 && !inTable.includes(x)) { inTable.push(x); insert(x); } }
-    // a key in the table behind a false match (another key of its group with the
-    // same H2), a missing key, and a key whose home group is the full group 2
-    let first = 50000;
-    while (H1(hashOf(first)) !== 0) first++;
-    let present = first + 1;
-    while (H1(hashOf(present)) !== 0 || H2(hashOf(present)) !== H2(hashOf(first))) present++;
-    inTable.push(first, present);
-    insert(first);
+    const want = [9, 10, 16, 6];
+    const count = [0, 0, 0, 0];
+    while (count.some((c, g) => c < want[g])) { const g = home(k); if (count[g] < want[g]) { insert(k); count[g]++; } k++; }
+    // present: in group 0 after a key with the same H2 (a false match first)
+    let present = 5000, partner = -1;
+    for (;; present++) {
+      if (home(present) !== 0 || has(present)) continue;
+      partner = keys.findIndex((x, i) => x != null && i < G && ctrl[i] === H2(hashOf(present)));
+      if (partner >= 0) break;
+    }
     insert(present);
-    let missing = 20000;
-    while (H1(hashOf(missing)) !== 1 || inTable.includes(missing) || !ctrl.slice(G, 2 * G).some((c) => c === H2(hashOf(missing)))) missing++;
-    let behind = 30000;
-    while (H1(hashOf(behind)) !== 2) behind++;
-    inTable.push(behind);
+    // missing: home group 1, not in the table, with a false match there
+    let missing = 7000;
+    while (home(missing) !== 1 || has(missing) || !ctrl.slice(G, 2 * G).includes(H2(hashOf(missing)))) missing++;
+    // behind: home group 2 (full), so it lands in group 3
+    let behind = 9000;
+    while (home(behind) !== 2 || has(behind)) behind++;
     insert(behind);
+    const hex = (b) => (b & 255).toString(16).toUpperCase().padStart(2, "0");
     let target = present;
     function make() {
-      const h = hashOf(target), h2 = H2(h);
-      const frames = [{ group: -1, cap: `Look up key ${target}. Its hash is ${h.toString(16).padStart(8, "0")}: H1 (the high bits) chooses group ${H1(h)}, and H2 = ${h2} (the low 7 bits) is what the control bytes store.` }];
-      let g = H1(h);
+      const x = hashOf(target), h2 = H2(x);
+      const fr = [];
+      const st = { group: -1, show: 0, m: null, slot: -1, found: -1, wrong: [], empty: false };
+      const push = (line, cap, o = {}) => { Object.assign(st, o); fr.push({ ...st, wrong: st.wrong.slice(), line, cap }); };
+      push([2, 3, 4], `Look up key **${target}**. Its hash is 0x${(x >>> 0).toString(16).padStart(8, "0")} (32 bits in this picture, 64 in the code). The low 7 bits are **H2 = ${h2}** (0x${hex(h2)}); the other bits, H1, choose the first group: **group ${H1(x)}**.`, { group: H1(x) });
+      let g = H1(x);
       for (let step = 1; step <= GROUPS; step++) {
-        const match = [];
-        for (let j = 0; j < G; j++) if (ctrl[g * G + j] === h2) match.push(j);
-        const empty = ctrl.slice(g * G, g * G + G).some((c) => c < 0);
-        frames.push({ group: g, match, cap: `Group ${g}: one SIMD compare of the 16 control bytes with H2 = ${h2} gives the mask ${Array.from({ length: G }, (_, j) => (match.includes(j) ? 1 : 0)).reverse().join("")}: ${match.length ? `slot${match.length > 1 ? "s" : ""} ${match.map((j) => g * G + j).join(", ")} may hold the key.` : "no slot can hold the key."}` });
-        for (const j of match) {
-          const s = g * G + j;
-          if (keys[s] === target) {
-            frames.push({ group: g, match, found: s, cap: `Slot ${s} holds key ${target}: found, after comparing ${frames.filter((x) => x.compared != null).length + 1} key${frames.filter((x) => x.compared != null).length ? "s" : ""}.` });
-            return frames;
+        const c = ctrl.slice(g * G, g * G + G);
+        push([6, 7], `Load the 16 control bytes of group ${g} into one 128-bit register: one instruction. 0x80 is an empty slot; 0x00–0x7F are the H2 of full slots.`, { group: g, show: 1, m: null, slot: -1, wrong: [] });
+        const eqBits = c.map((b) => (b === h2 ? 1 : 0));
+        const mask = eqBits.reduce((a, bit, j) => a | (bit << j), 0);
+        push([8], `_mm_set1_epi8 puts H2 = 0x${hex(h2)} in all 16 bytes, and _mm_cmpeq_epi8 compares the 16 pairs of bytes at once: 0xFF where they are equal, 0x00 elsewhere.`, { show: 2 });
+        push([9], `_mm_movemask_epi8 takes the top bit of each byte: the 16-bit mask 0b${mask.toString(2).padStart(16, "0")}. Bit j is 1 when slot j may hold the key.${mask ? "" : " Here no bit is set: no slot of this group can hold the key."}`, { show: 3, m: mask });
+        let m = mask;
+        while (m) {
+          const j = 31 - Math.clz32(m & -m);
+          const slot = g * G + j;
+          if (keys[slot] === target) {
+            push([10, 11, 12], `countr_zero(m) = ${j}: slot ${slot}. Its key is ${target}: **found**, after ${st.wrong.length + 1} key compare${st.wrong.length ? "s" : ""}.`, { slot, found: slot });
+            return fr;
           }
-          frames.push({ group: g, match, compared: s, cap: `Slot ${s} holds key ${keys[s]}, not ${target}: a false match, which happens with probability 1/128 per full slot.` });
+          st.wrong.push(slot);
+          m &= m - 1;
+          push([10, 11, 9], `countr_zero(m) = ${j}: slot ${slot}. Its key is ${keys[slot]}, not ${target}: a **false match**, the same 7 bits by chance (probability 1/128 for each full slot). m &= m − 1 clears that bit.`, { slot, m });
         }
-        if (empty) {
-          frames.push({ group: g, match, stop: true, cap: `Group ${g} has an empty slot, so the search stops: key ${target} is not in the table. If it were, it would be in this group or before it.` });
-          return frames;
+        const empties = c.filter((b) => b === EMPTY).length;
+        if (empties) {
+          push([14, 15, 16], `No candidate is left. A compare with kEmpty (0x80) and a movemask find ${empties} empty slot${empties > 1 ? "s" : ""} in group ${g}, so the search stops: key ${target} **is not in the table**. An insert would have used this group.`, { show: 4, empty: true });
+          return fr;
         }
-        frames.push({ group: g, match, next: true, cap: `Group ${g} is full (no empty slot), so the key may be in a later group: the search jumps ${step} group${step > 1 ? "s" : ""} on, to group ${(g + step) % GROUPS}.` });
-        g = (g + step) % GROUPS;
+        const ng = (g + step) % GROUPS;
+        push([14, 15, 17], `Group ${g} has no empty slot: when it was full, a key with this home went on to the next group. So the search goes on: g + ${step} = group ${ng}.`, { show: 4 });
+        g = ng;
       }
-      return frames;
+      return fr;
     }
-    const ui = frame(fig, { title: "A lookup in a Swiss table", kicker: "Animation" });
+    const ui = frame(fig, { title: "A lookup in a Swiss table", kicker: "Animation", split: true });
     ui.stage.classList.add("is-plain");
     const box = h("div", { class: "st-swiss" });
     ui.stage.appendChild(box);
+    const code = new V.CodePanel(ui.side, SWISS_CODE, "c++");
     const tools = toolbar(ui);
     toggle(tools, "Look up", [["present", "a key in the table"], ["missing", "a missing key"], ["behind", "a key behind a full group"]], "present", (v) => {
       target = v === "present" ? present : v === "missing" ? missing : behind;
       player.setFrames(make());
     });
     const player = new Player(fig, {
-      frames: make(), interval: 1700,
+      frames: make(), interval: 2200,
       apply: (f) => {
         box.textContent = "";
-        const hh = hashOf(target);
-        box.append(h("div", { class: "st-swiss-key" }, h("span", { text: `key ${target}` }), h("span", { text: "→" }), h("b", { text: `H1 → group ${H1(hh)}` }), h("b", { text: `H2 = ${H2(hh)}` })));
-        for (let g = 0; g < GROUPS; g++) {
-          const vals = ctrl.slice(g * G, g * G + G).map((c) => (c < 0 ? "–" : String(c)));
-          box.append(cells(vals, (j) => {
-            const s = g * G + j;
-            if (f.found === s) return "is-hit";
-            if (f.compared === s) return "is-bad";
-            if (g === f.group && f.match && f.match.includes(j)) return "is-cur";
-            if (ctrl[s] < 0) return "is-empty";
-            return g === f.group ? "" : "is-dim";
-          }, `group ${g}`));
+        const x = hashOf(target), h2 = H2(x);
+        // all groups, small: where the probe is
+        box.append(h("div", { class: "st-groups" }, ...Array.from({ length: GROUPS }, (_, g) => h("div", { class: `st-group${g === f.group ? " is-cur" : ""}` },
+          h("span", { text: `group ${g}` }), h("i", {}, ...ctrl.slice(g * G, g * G + G).map((b) => h("u", { class: b === EMPTY ? "is-empty" : "" })))))));
+        if (f.group >= 0 && f.show >= 1) {
+          const c = ctrl.slice(f.group * G, f.group * G + G);
+          const base = f.group * G;
+          const cl = (j) => (f.found === base + j ? " is-hit" : f.wrong.includes(base + j) ? " is-bad" : f.slot === base + j ? " is-cur" : "");
+          box.append(cells(c.map((_, j) => base + j), () => "is-index", "slot"));
+          box.append(cells(c.map(hex), (j) => `${c[j] === EMPTY ? "is-empty" : ""}${cl(j)}`, "ctrl"));
+          if (f.show >= 2) {
+            box.append(cells(c.map(() => hex(h2)), () => "is-dim", "set1(h2)"));
+            box.append(cells(c.map((b) => (b === h2 ? "FF" : "00")), (j) => (c[j] === h2 ? "is-on" : "is-dim"), "cmpeq"));
+          }
+          if (f.show >= 3 && f.m != null) box.append(cells(c.map((_, j) => String((f.m >> j) & 1)), (j) => ((f.m >> j) & 1 ? "is-on" : "is-dim"), "m"));
+          if (f.wrong.length || f.found >= 0) box.append(cells(c.map((_, j) => (f.wrong.includes(base + j) || f.found === base + j ? String(keys[base + j]) : "")), (j) => cl(j) || "is-dim", "key"));
+          if (f.show >= 4) box.append(cells(c.map((b) => (b === EMPTY ? "FF" : "00")), (j) => (c[j] === EMPTY ? "is-on" : "is-dim"), "== 0x80"));
         }
+        code.set(f.line);
         ui.setCaption(f.cap);
       },
     });
@@ -1763,69 +1882,174 @@
 
   /* ------------------------------------------------- consistent hashing */
   register("hash-ring", (fig) => {
-    const KEYS = Array.from({ length: 120 }, (_, i) => mix32(i * 7919 + 13));
-    let servers = [0, 1, 2, 3], vnodes = 4, moved = new Set(), modMoved = 0, lastChange = null, nextId = 4;
-    const tokens = () => servers.flatMap((s) => Array.from({ length: vnodes }, (_, v) => ({ t: mix32((s + 1) * 1000003 + v * 7777), s }))).sort((a, b) => a.t - b.t);
-    function owners() {
-      const ts = tokens();
-      return KEYS.map((k) => {
-        let lo = 0, hi = ts.length;
-        while (lo < hi) { const mid = (lo + hi) >> 1; if (ts[mid].t < k) lo = mid + 1; else hi = mid; }
-        return ts[lo === ts.length ? 0 : lo].s;
-      });
-    }
+    const NAMES = "ABCDEF";
+    const KEYS = Array.from({ length: 24 }, (_, i) => mix32(i * 7919 + 13) / 4294967296);  // key positions on the ring, 0 ... 1
+    let servers = [0, 1, 2], points = 1, last = null;
+    const pointsOf = (list) => list.flatMap((srv) => Array.from({ length: points }, (_, v) => ({ t: mix32((srv + 1) * 1000003 + v * 7777) / 4294967296, srv, v }))).sort((x, y) => x.t - y.t);
+    const ringOwner = (list) => { const ps = pointsOf(list); return KEYS.map((k) => (ps.find((q) => q.t >= k) || ps[0]).srv); };
+    const modOwner = (list) => KEYS.map((k) => list[Math.floor(k * 4294967296) % list.length]);
     const ui = frame(fig, { title: "Consistent hashing", kicker: "Try it", split: true });
     ui.stage.classList.add("is-plain");
-    const W = 320, H = 320, C = 160, R = 120;
+    const W = 320, H = 320, C = 160, R = 118;
     const svg = svgBox(ui.stage, W, H, "st-ring");
+    const strip = h("div", { class: "st-modstrip" });
+    ui.stage.appendChild(strip);
     const side = h("div", { class: "st-side" });
     ui.side.appendChild(side);
     const tools = toolbar(ui);
-    function change(f) {
-      const before = owners(), n0 = servers.length;
-      const what = f();
-      const after = owners();
-      moved = new Set(after.map((o, i) => (o !== before[i] ? i : -1)).filter((i) => i >= 0));
-      modMoved = KEYS.filter((k) => k % n0 !== k % servers.length).length;
-      lastChange = what;
+    function change(what, f) {
+      const before = { ring: ringOwner(servers), mod: modOwner(servers) };
+      f();
+      last = { what, before, ring: ringOwner(servers), mod: modOwner(servers) };
       draw();
     }
     button(tools, "Add a server", () => {
       if (servers.length >= 6) { ui.setCaption("At most 6 servers in this picture."); return; }
-      change(() => { const s = [0, 1, 2, 3, 4, 5].find((x) => !servers.includes(x)); servers.push(s); return `Server ${s} joined`; });
-    });
+      const srv = [0, 1, 2, 3, 4, 5].find((x) => !servers.includes(x));
+      change(`Server ${NAMES[srv]} joined`, () => { servers.push(srv); servers.sort((x, y) => x - y); });
+    }, "is-primary");
     button(tools, "Remove a server", () => {
       if (servers.length <= 2) { ui.setCaption("Keep at least 2 servers."); return; }
-      change(() => { const s = servers.splice(Math.floor(servers.length / 2), 1)[0]; return `Server ${s} left`; });
+      const srv = servers[Math.floor(servers.length / 2)];
+      change(`Server ${NAMES[srv]} left`, () => { servers = servers.filter((x) => x !== srv); });
     });
-    slider(tools, "Virtual nodes", { min: 0, max: 5, step: 1, value: 2, format: (v) => String(2 ** v) }, (v) => { vnodes = 2 ** v; moved = new Set(); lastChange = null; draw(); });
+    slider(tools, "Points per server", { min: 0, max: 3, step: 1, value: 0, format: (v) => String(2 ** v) }, (v) => { points = 2 ** v; last = null; draw(); });
+    const ang = (t) => t * 2 * Math.PI;
+    const at = (t, r) => [C + r * Math.sin(ang(t)), C - r * Math.cos(ang(t))];
+    const arc = (t0, t1, r) => {
+      const [x0, y0] = at(t0, r), [x1, y1] = at(t1, r);
+      const large = (t1 - t0 + 1) % 1 > 0.5 ? 1 : 0;
+      return `M${x0.toFixed(1)} ${y0.toFixed(1)}A${r} ${r} 0 ${large} 1 ${x1.toFixed(1)} ${y1.toFixed(1)}`;
+    };
     function draw() {
       svg.textContent = "";
-      s("circle", { cx: C, cy: C, r: R, class: "st-dial" }, svg);
-      const ang = (t) => (t / 4294967296) * 2 * Math.PI;
-      const at = (t, r) => [C + r * Math.sin(ang(t)), C - r * Math.cos(ang(t))];
-      const own = owners();
-      KEYS.forEach((k, i) => {
-        const [x, y] = at(k, R - 14);
-        s("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: moved.has(i) ? 4.5 : 3.2, class: `st-keydot c${own[i] % 6}${moved.has(i) ? " is-moved" : ""}` }, svg);
+      const ps = pointsOf(servers);
+      // the arc before each point belongs to the point's server
+      ps.forEach((q, i) => {
+        const prev = ps[(i + ps.length - 1) % ps.length];
+        const t0 = ps.length === 1 ? q.t + 1e-6 : prev.t;
+        s("path", { d: arc(t0, q.t, R), class: `st-arc c${q.srv % 6}` }, svg);
       });
-      for (const { t, s: srv } of tokens()) {
-        const [x1, y1] = at(t, R - 4), [x2, y2] = at(t, R + 10);
-        seg(svg, x1, y1, x2, y2, `st-token c${srv % 6}`);
+      const own = ringOwner(servers);
+      const moved = last ? new Set(KEYS.map((_, i) => i).filter((i) => last.ring[i] !== last.before.ring[i])) : new Set();
+      KEYS.forEach((k, i) => {
+        const [x, y] = at(k, R - 16);
+        s("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: moved.has(i) ? 5.5 : 3.6, class: `st-keydot c${own[i] % 6}${moved.has(i) ? " is-moved" : ""}` }, svg);
+      });
+      for (const q of ps) {
+        const [x, y] = at(q.t, R);
+        s("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: 8, class: `st-point c${q.srv % 6}` }, svg);
+        const [lx, ly] = at(q.t, R + 17);
+        label(svg, lx, ly, points > 1 ? `${NAMES[q.srv]}${q.v + 1}` : NAMES[q.srv], `st-point-lbl c${q.srv % 6}`);
       }
-      label(svg, C, C - 8, `${servers.length} servers`, "st-axis");
-      label(svg, C, C + 10, `${vnodes} point${vnodes > 1 ? "s" : ""} each`, "st-tick");
+      label(svg, C, C - 6, "keys go clockwise", "st-tick");
+      label(svg, C, C + 10, "to the next point", "st-tick");
+      // the same keys with hash % n
+      const mod = modOwner(servers);
+      const movedMod = last ? new Set(KEYS.map((_, i) => i).filter((i) => last.mod[i] !== last.before.mod[i])) : new Set();
+      strip.textContent = "";
+      strip.append(cells(KEYS.map((_, i) => NAMES[own[i]]), (i) => `c${own[i] % 6}${moved.has(i) ? " is-moved" : ""}`, "ring"));
+      strip.append(cells(KEYS.map((_, i) => NAMES[mod[i]]), (i) => `c${mod[i] % 6}${movedMod.has(i) ? " is-moved" : ""}`, "hash % n"));
       const load = servers.map((srv) => own.filter((o) => o === srv).length);
       const mean = KEYS.length / servers.length;
       side.textContent = "";
-      side.append(panel("keys per server", `mean ${mean.toFixed(0)}`, h("div", { class: "st-loads" },
-        ...servers.map((srv, i) => h("div", { class: "st-load" }, h("span", { text: `server ${srv}` }),
+      side.append(panel("keys per server (ring)", `mean ${mean.toFixed(1)}`, h("div", { class: "st-loads" },
+        ...servers.map((srv, i) => h("div", { class: "st-load" }, h("span", { text: `server ${NAMES[srv]}` }),
           h("i", { class: `c${srv % 6}`, style: `width:${Math.min(100, (load[i] / (2 * mean)) * 100).toFixed(0)}%` }), h("b", { text: String(load[i]) }))))));
-      const max = Math.max(...load);
-      ui.setCaption(lastChange
-        ? `${lastChange}: ${moved.size} of ${KEYS.length} keys moved (the larger dots), all of them ${lastChange.includes("joined") ? "to the new server" : "from the server that left"}. With hash % n, ${modMoved} keys would have moved.`
-        : `Each server has ${vnodes} point${vnodes > 1 ? "s" : ""} on the ring, and a key belongs to the first point at or after it, clockwise. The busiest server has ${max} keys, ${(max / mean).toFixed(2)} times the mean: more virtual nodes make the loads more equal.`);
+      if (last) {
+        const joined = last.what.includes("joined");
+        ui.setCaption(`${last.what}. On the ring, **${moved.size} of ${KEYS.length}** keys moved (the large dots), all of them ${joined ? "to the new server: they were on the arcs just before its points" : "from the server that left, to the next point on the ring"}. With hash % n, **${movedMod.size} of ${KEYS.length}** keys moved (the outlined cells), most of them between servers that did not change.`);
+      } else {
+        const max = Math.max(...load);
+        ui.setCaption(`Each server has ${points} point${points > 1 ? "s" : ""} on the ring, and a key belongs to the server of the first point at or after it, clockwise: the colour of its arc. The busiest server has ${max} keys, ${(max / mean).toFixed(2)} times the mean. More points per server (virtual nodes) make the arcs, and the loads, more equal. Add or remove a server to see which keys move.`);
+      }
     }
     draw();
+  });
+
+  /* ------------------------------------------------- cuckoo hashing */
+  register("cuckoo", (fig) => {
+    // 16 slots as 16 buckets of 1, 8 buckets of 2 or 4 buckets of 4. Every key
+    // has two buckets, from two parts of its hash.
+    const KEYS = "ABCDEFGHIJKLMNOP".split("");
+    const MAX_KICKS = 20;
+    let per = 2;
+    function make() {
+      const B = 16 / per;
+      const two = (k) => { const x = mix32(k.charCodeAt(0) * 2654435761 + 12345); let b2 = (x >>> 16) % B; const b1 = x % B; if (b2 === b1) b2 = (b1 + 1) % B; return [b1, b2]; };
+      const table = Array.from({ length: B }, () => []);
+      const rng = mulberry32(7);
+      const frames = [];
+      const info = KEYS.map((k) => [k, ...two(k)]);
+      const snap = (o) => frames.push({ table: table.map((b) => b.slice()), B, info, ...o });
+      snap({ cap: `${B} bucket${B > 1 ? "s" : ""} of ${per} slot${per > 1 ? "s" : ""}: 16 slots. Every key has two buckets (the two numbers after it in the list), and it must be in one of them.`, done: 0 });
+      let done = 0, failed = null;
+      for (const k of KEYS) {
+        const [b1, b2] = two(k);
+        if (table[b1].length < per || table[b2].length < per) {
+          const b = table[b1].length < per ? b1 : b2;
+          table[b].push(k);
+          done++;
+          snap({ cur: k, cand: [b1, b2], put: b, cap: `Insert **${k}**: its buckets are ${b1} and ${b2}. Bucket ${b} has a free slot, so ${k} goes there.`, done });
+          continue;
+        }
+        snap({ cur: k, cand: [b1, b2], cap: `Insert **${k}**: its buckets ${b1} and ${b2} are both full. Kick a key out of bucket ${b1}.`, done });
+        let hand = k, b = b1, kicks = 0, ok = false;
+        const path = [];
+        while (kicks < MAX_KICKS) {
+          const j = Math.floor(rng() * per);
+          const out = table[b][j];
+          table[b][j] = hand;
+          kicks++;
+          const [o1, o2] = two(out);
+          const next = o1 === b ? o2 : o1;
+          path.push(b);
+          if (table[next].length < per) {
+            table[next].push(out);
+            ok = true;
+            snap({ cur: hand, cand: [b, next], kick: out, put: next, path: path.slice(), cap: `${hand} takes the place of **${out}** in bucket ${b}. The other bucket of ${out} is ${next}, and it has room: ${out} moves there. ${kicks} kick${kicks > 1 ? "s" : ""} in all.`, done: done + 1 });
+            break;
+          }
+          snap({ cur: hand, cand: [b, next], kick: out, inHand: [out, next], path: path.slice(), cap: `${hand} takes the place of **${out}** in bucket ${b}. The other bucket of ${out} is ${next}, but it is full too, so ${out} kicks a key out there.`, done });
+          hand = out;
+          b = next;
+        }
+        if (!ok) {
+          failed = { key: hand, at: done };
+          snap({ cur: hand, cap: `After ${MAX_KICKS} kicks there is still a key without a slot (${hand}): the keys go round in a circle. Here the table must grow, or get a new hash function, and all keys are inserted again. It held **${done} of 16** keys, ${Math.round((100 * done) / 16)} %.`, done, fail: true });
+          break;
+        }
+        done++;
+      }
+      if (!failed) snap({ cap: `All 16 keys fit: the table is 100 % full.`, done });
+      // a lookup reads two buckets and nothing else
+      const any = frames[frames.length - 1].table.flat()[0];
+      if (any) {
+        const [l1, l2] = two(any);
+        snap({ cur: any, cand: [l1, l2], look: true, cap: `Look up **${any}**: read bucket ${l1} and bucket ${l2}, compare at most ${2 * per} keys, done. No other place can hold ${any}: a lookup never reads more than two buckets, and both addresses are known before the first load.`, done });
+      }
+      return frames;
+    }
+    const ui = frame(fig, { title: "Cuckoo hashing", kicker: "Animation" });
+    ui.stage.classList.add("is-plain");
+    const box = h("div", { class: "st-cuckoo" });
+    ui.stage.appendChild(box);
+    const tools = toolbar(ui);
+    toggle(tools, "Slots per bucket", [[1, "1"], [2, "2"], [4, "4"]], per, (v) => { per = v; player.setFrames(make()); });
+    const player = new Player(fig, {
+      frames: make(), interval: 1500,
+      apply: (f) => {
+        box.textContent = "";
+        const placed = new Set(f.table.flat());
+        box.append(cells(f.info.map(([k, a, b]) => `${k}: ${a}, ${b}`), (i) => (f.info[i][0] === f.cur ? "is-cur" : placed.has(f.info[i][0]) ? "" : "is-dim"), "key: buckets"));
+        const cand = new Set(f.cand || []);
+        box.append(h("div", { class: "st-buckets" }, ...f.table.map((b, i) => h("div", { class: `st-bucket${cand.has(i) ? (f.look ? " is-look" : " is-cand") : ""}${f.put === i ? " is-put" : ""}` },
+          h("span", { class: "st-bucket-name", text: String(i) }),
+          ...Array.from({ length: per }, (_, j) => h("span", { class: `st-cslot${b[j] == null ? " is-empty" : b[j] === f.cur ? " is-cur" : b[j] === f.kick ? " is-kick" : ""}`, text: b[j] || "" }))))));
+        box.append(h("div", { class: "st-kv" }, h("span", { text: "in hand" }), h("b", { text: f.inHand ? `${f.inHand[0]} → bucket ${f.inHand[1]}` : "–" }),
+          h("span", { text: "keys in the table" }), h("b", { text: `${f.done} of 16` }), h("span", { text: "full" }), h("b", { text: `${Math.round((100 * f.done) / 16)} %` })));
+        ui.setCaption(f.cap);
+      },
+    });
   });
 })();

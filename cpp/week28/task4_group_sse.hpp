@@ -1,4 +1,4 @@
-// Task 5: the group functions with SSE2, one compare for all 16 control
+// Task 4: the group functions with SSE2, one compare for all 16 control
 // bytes: _mm_loadu_si128, _mm_cmpeq_epi8 and _mm_movemask_epi8. Now they call
 // the scalar ones. A full slot's control byte has the top bit clear, so the
 // empty-or-deleted slots are exactly the bytes whose top bit is set.

@@ -1,6 +1,6 @@
-// Task 4: erase of the Swiss table with the empty-or-deleted rule of swiss.hpp.
+// Task 3: erase of the Swiss table with the empty-or-deleted rule of swiss.hpp.
 #include "swiss.hpp"
-#include "task5_group_sse.hpp"
+#include "task4_group_sse.hpp"
 
 namespace w28 {
 
