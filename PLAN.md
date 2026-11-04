@@ -470,9 +470,8 @@ Every week in Part V is about optimization.
 
 ### Week 33 — The CPU in Depth
 
-- **Content:** the tools again (for students starting with Part V); pipelines,
-  execution ports, micro-ops, latency and throughput tables, branch
-  prediction, top-down analysis, the roofline model.
+- **Content:** pipelines, execution ports, micro-ops, latency and throughput tables,
+  branch prediction, top-down analysis, the roofline model.
 - **Tasks (8):** setup 1 · dependency chains: a SIMD sum with several
   accumulators 2 · branchless rewrite 2 · cache-blocked transpose with 8×8
   AVX2 blocks 2 · parallel scaling and roofline placement 1
