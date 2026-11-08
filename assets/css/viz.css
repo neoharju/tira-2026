@@ -1238,3 +1238,110 @@ html.dark .viz { --rr-q0: #475569; --rr-q1: #3b528b; --rr-q2: #21918c; --rr-q3: 
   .st-oa .st-rowname, .st-swiss .st-rowname, .st-cm .st-rowname { min-width: 3.4rem; font-size: .64rem; }
   .st-wtl .st-cell { min-width: 2.4rem; font-size: .66rem; }
 }
+
+/* ============ Part IV, chapters 29–30 (viz-indexes.js): tries, radix trees, spatial indexes ============ */
+/* a radix tree that grows */
+.st-svg.ix-tree { max-width: 640px; }
+.ix-digit { fill: var(--vz-cur); font: 750 10.5px var(--vz-mono); text-anchor: middle; dominant-baseline: central; paint-order: stroke; stroke: var(--bg-soft); stroke-width: 3.5px; stroke-linejoin: round; }
+html.dark .ix-digit { stroke: #0e1018; }
+.ix-leaf { fill: color-mix(in srgb, var(--vz-c2) 12%, var(--vz-node)); stroke: var(--vz-c2); stroke-width: 1.2; transition: fill .3s, stroke .3s; }
+.ix-leaf.is-cur { fill: var(--vz-ok-fill); stroke: var(--vz-ok); stroke-width: 2.4; }
+.ix-leaf-lbl { fill: var(--vz-node-text); font: 650 9.5px var(--vz-mono); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.ix-node-lbl { fill: var(--vz-node-text); font: 700 10px var(--vz-mono); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.ix-node-sub { fill: var(--fg-mute); font: 650 8.5px var(--font-sans); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.ix-compare { display: grid; grid-template-columns: 1fr auto auto auto; gap: .3rem .6rem; padding: .55rem .7rem; align-items: baseline; font-size: .76rem; color: var(--fg-mute); }
+.ix-compare .ix-h { color: var(--fg-faint); font: 700 .64rem var(--font-sans); letter-spacing: .04em; text-transform: uppercase; text-align: right; }
+.ix-compare b { color: var(--fg); font: 700 .8rem var(--vz-mono); text-align: right; }
+.ix-name.is-on { color: var(--vz-cur); font-weight: 750; }
+.ix-note { margin: 0; padding: 0 .3rem; color: var(--fg-faint); font-size: .7rem; line-height: 1.4; }
+/* the four kinds of nodes */
+.ix-kinds { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .45rem; margin-bottom: .5rem; }
+.ix-kind { display: grid; gap: .2rem; padding: .4rem .55rem .5rem; border: 1px solid var(--border-soft); border-radius: 10px; background: var(--bg-elev); font-size: .74rem; color: var(--fg-mute); transition: border-color .3s, opacity .3s; }
+.ix-kind b { color: var(--fg); font-size: .8rem; }
+.ix-kind.is-on { border-color: var(--vz-cur); box-shadow: 0 0 0 2px var(--vz-cur-soft); }
+.ix-kind.is-small { opacity: .5; }
+.ix-kind i { display: flex; gap: 1px; height: 1.2rem; }
+.ix-part { display: grid; place-items: center; min-width: 0; overflow: hidden; border-radius: 3px; background: color-mix(in srgb, var(--vz-c3) 22%, var(--vz-node)); color: var(--vz-node-text); font: 650 .6rem var(--font-sans); white-space: nowrap; text-decoration: none; }
+.ix-part.is-head { background: color-mix(in srgb, var(--fg-faint) 40%, var(--vz-node)); }
+.ix-part.is-ptr { background: color-mix(in srgb, var(--vz-c5) 26%, var(--vz-node)); }
+/* the Node16 search */
+.ix-n16 .st-cell { min-width: 1.75rem; }
+.st-count.is-bad { border-color: var(--vz-bad); background: var(--vz-bad-soft); }
+.st-count.is-bad b { color: var(--vz-bad); }
+/* longest-prefix match */
+.ix-lpm { display: grid; justify-content: safe center; gap: 3px; padding: .25rem 0; overflow-x: auto; }
+.ix-lpm .st-cell { min-width: 1.45rem; font-size: .68rem; }
+.ix-lpm .st-rowname { min-width: 6.4rem; }
+.ix-tblhead { color: var(--fg-mute); font: 650 .7rem var(--font-sans); margin-bottom: .1rem; }
+.ix-routes { display: grid; gap: 2px; padding: .45rem .6rem; }
+.ix-route { display: flex; justify-content: space-between; gap: .6rem; padding: .12rem .4rem; border-left: 4px solid var(--vz-c5); border-radius: 4px; font-size: .74rem; transition: opacity .3s, background .3s; }
+.ix-route code { font: 600 .74rem var(--vz-mono); background: none; padding: 0; }
+.ix-route.is-todo { opacity: .35; }
+.ix-route.is-best { background: var(--vz-ok-soft); outline: 1.5px solid var(--vz-ok); }
+.ix-route.c0 { border-left-color: var(--vz-c0); } .ix-route.c1 { border-left-color: var(--vz-c1); } .ix-route.c2 { border-left-color: var(--vz-c2); }
+.ix-route.c3 { border-left-color: var(--vz-c3); } .ix-route.c4 { border-left-color: var(--vz-c4); } .ix-route.c5 { border-left-color: var(--vz-c5); }
+.ix-walk { display: flex; gap: 3px; padding: .5rem .6rem; font: 700 .85rem var(--vz-mono); }
+.ix-walk span { display: grid; place-items: center; width: 1.45rem; height: 1.6rem; border: 1px solid var(--border-soft); border-radius: 5px; }
+.ix-walk span.is-route { border-color: var(--vz-ok); box-shadow: inset 0 -3px 0 var(--vz-ok); }
+/* the parallel build */
+.st-svg.ix-gantt { max-width: 660px; }
+.st-bar.c3 { fill: var(--vz-c3); }
+.ix-idle { fill: none; stroke: var(--border-soft); stroke-width: 1; stroke-dasharray: 3 3; }
+.ix-phase { fill: color-mix(in srgb, var(--fg-faint) 35%, transparent); }
+.ix-gantt-lbl { fill: var(--vz-on); font: 750 9.5px var(--vz-mono); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.ix-now { stroke: var(--fg); stroke-width: 1.2; stroke-dasharray: 3 3; }
+@container viz (max-width: 520px) {
+  .ix-kinds { grid-template-columns: minmax(0, 1fr); }
+  .ix-n16 .st-cell, .ix-lpm .st-cell { min-width: 1.3rem; font-size: .6rem; }
+  .ix-lpm .st-rowname { min-width: 4.6rem; font-size: .62rem; }
+}
+/* space-filling curves */
+.st-svg.ix-grid { max-width: 380px; }
+.ix-cell { fill: var(--vz-node); stroke: var(--border-soft); stroke-width: 1; }
+.ix-cell.is-extra { fill: color-mix(in srgb, var(--vz-warn) 14%, var(--vz-node)); stroke: var(--vz-warn); stroke-dasharray: 2 2; }
+.ix-cell.c0 { fill: color-mix(in srgb, var(--vz-c0) 45%, var(--vz-node)); } .ix-cell.c1 { fill: color-mix(in srgb, var(--vz-c1) 45%, var(--vz-node)); }
+.ix-cell.c2 { fill: color-mix(in srgb, var(--vz-c2) 45%, var(--vz-node)); } .ix-cell.c3 { fill: color-mix(in srgb, var(--vz-c3) 50%, var(--vz-node)); }
+.ix-cell.c4 { fill: color-mix(in srgb, var(--vz-c4) 45%, var(--vz-node)); } .ix-cell.c5 { fill: color-mix(in srgb, var(--vz-c5) 45%, var(--vz-node)); }
+.ix-curve { fill: none; stroke: var(--fg-mute); stroke-width: 1.3; stroke-linejoin: round; opacity: .75; pointer-events: none; }
+.ix-qbox { fill: none; stroke: var(--vz-cur); stroke-width: 2.6; }
+.ix-bits .st-cell { min-width: 1.6rem; }
+.ix-bits .st-rowname { min-width: 7.6rem; }
+/* cells */
+.st-svg.ix-hexsvg { max-width: 560px; }
+.ix-hexcell { fill: var(--vz-node); stroke: var(--border); stroke-width: 1; }
+.ix-hexcell.r0 { fill: var(--vz-cur); }
+.ix-hexcell.r1 { fill: color-mix(in srgb, var(--vz-cur) 55%, var(--vz-node)); }
+.ix-hexcell.r2 { fill: color-mix(in srgb, var(--vz-cur) 38%, var(--vz-node)); }
+.ix-hexcell.r3 { fill: color-mix(in srgb, var(--vz-cur) 24%, var(--vz-node)); }
+.ix-hexcell.r4 { fill: color-mix(in srgb, var(--vz-cur) 12%, var(--vz-node)); }
+.ix-dist { stroke: var(--vz-c0); stroke-width: 2; }
+.ix-dist-lbl { fill: var(--vz-c0); font: 750 11px var(--font-sans); text-anchor: middle; dominant-baseline: central; paint-order: stroke; stroke: var(--vz-node); stroke-width: 3px; }
+.ix-centre { fill: var(--vz-c0); stroke: var(--vz-node); stroke-width: 1.5; }
+/* maps, boxes and queries */
+.st-svg.ix-map { max-width: 520px; }
+.ix-mapbg { fill: color-mix(in srgb, var(--vz-c2) 5%, var(--vz-node)); stroke: var(--border-soft); }
+.ix-cut { stroke: var(--vz-c0); stroke-width: 1.6; stroke-dasharray: 6 4; }
+.ix-path { fill: none; stroke: var(--vz-c1); stroke-width: 1.2; stroke-linejoin: round; opacity: .8; }
+.ix-leafbox { fill: color-mix(in srgb, var(--vz-c5) 10%, transparent); stroke: var(--vz-c5); stroke-width: 1.2; transition: fill .3s, stroke .3s, opacity .3s; }
+.ix-leafbox.c0 { fill: color-mix(in srgb, var(--vz-c0) 14%, transparent); stroke: var(--vz-c0); } .ix-leafbox.c1 { fill: color-mix(in srgb, var(--vz-c1) 14%, transparent); stroke: var(--vz-c1); }
+.ix-leafbox.c2 { fill: color-mix(in srgb, var(--vz-c2) 14%, transparent); stroke: var(--vz-c2); } .ix-leafbox.c3 { fill: color-mix(in srgb, var(--vz-c3) 16%, transparent); stroke: var(--vz-c3); }
+.ix-leafbox.c4 { fill: color-mix(in srgb, var(--vz-c4) 14%, transparent); stroke: var(--vz-c4); } .ix-leafbox.c5 { fill: color-mix(in srgb, var(--vz-c5) 14%, transparent); stroke: var(--vz-c5); }
+.ix-leafbox.is-on { stroke: var(--vz-ok); fill: var(--vz-ok-soft); stroke-width: 1.8; }
+.ix-leafbox.is-read { stroke: var(--vz-ok); fill: color-mix(in srgb, var(--vz-ok) 22%, transparent); stroke-width: 2.4; }
+.ix-leafbox.is-off { opacity: .35; }
+.ix-midbox { fill: none; stroke: var(--fg-mute); stroke-width: 1.6; stroke-dasharray: 5 3; transition: stroke .3s, opacity .3s; }
+.ix-midbox.is-on { stroke: var(--vz-ok); stroke-width: 2.4; stroke-dasharray: none; }
+.ix-midbox.is-off { opacity: .35; }
+.ix-rootbox { fill: none; stroke: var(--vz-done); stroke-width: 2; stroke-dasharray: 8 4; }
+.ix-pt { fill: var(--vz-node-text); }
+.ix-pt.is-found { fill: var(--vz-ok); stroke: var(--vz-node); stroke-width: 1.5; }
+.ix-radius { fill: color-mix(in srgb, var(--vz-c0) 10%, transparent); stroke: var(--vz-c0); stroke-width: 1.6; stroke-dasharray: 4 3; }
+.ix-queue { display: grid; gap: 2px; padding: .45rem .6rem; font: 600 .74rem var(--vz-mono); color: var(--fg); }
+.ix-queue span:first-child { color: var(--vz-cur); font-weight: 750; }
+.ix-n8 .st-cell { min-width: 2.3rem; }
+.ix-n8 .st-rowname { min-width: 7.4rem; }
+.ix-slot-lbl { fill: var(--vz-node-text); font: 750 11px var(--vz-mono); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+@container viz (max-width: 520px) {
+  .ix-bits .st-cell, .ix-n8 .st-cell { min-width: 1.25rem; font-size: .6rem; }
+  .ix-bits .st-rowname, .ix-n8 .st-rowname { min-width: 5.2rem; font-size: .6rem; }
+}
