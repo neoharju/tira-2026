@@ -927,6 +927,8 @@ html.dark .copy-btn.is-copied { color: #86efac; }
   font-variant-numeric: tabular-nums;
 }
 .prose .table-wrap > table { min-width: max-content; }
+/* {: .fit } – the cells may wrap, so the table fits the page and does not scroll */
+.prose .table-wrap > table.fit { min-width: 0; }
 .prose :not(.table-wrap) > table:not(.rouge-table, .viz *) {
   display: block;
   width: max-content;

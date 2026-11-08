@@ -100,6 +100,7 @@ Formatting conventions (kramdown, GFM input):
 | Graded task | a note box whose title is `Task N: name (1 point)`; it starts closed, and its title opens it (`site.js`) |
 | Memory layout table | `{: .memory }` on the line before the table |
 | Table whose first row is a header | `{: .grid-head }` on the line before the table |
+| Table whose cells may wrap, so that it fits a narrow page (by default a table is as wide as its longest lines and scrolls) | `{: .fit }` on the line before the table |
 
 ### Interactive figures
 
