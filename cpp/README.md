@@ -1,6 +1,6 @@
 # Code for Parts III–V
 
-This folder has the starting code for the tasks of weeks 17–28: one file per
+This folder has the starting code for the tasks of weeks 17–30: one file per
 task, tests for every task, and benchmarks with the speed goals. The task
 descriptions are in the course material.
 
@@ -144,6 +144,11 @@ hardware thread). Close other programs when you measure.
 | 27 | 5 | `week27/task5_wtinylfu.hpp` (a class template) |
 | 28 | 1–3, 5–8 | `week28/task1_robin_hood.cpp` … `week28/task3_swiss_erase.cpp`, `week28/task5_batch.cpp` … `week28/task8_consistent.cpp` |
 | 28 | 4 | `week28/task4_group_sse.hpp` |
+| 29 | 1–3, 6, 7 | `week29/task1_find.cpp` … `week29/task3_scan.cpp`, `week29/task6_lpm.cpp`, `week29/task7_parallel_build.cpp` |
+| 29 | 4, 5 | `week29/task4_find16.hpp`, `week29/task5_lower16.hpp` |
+| 29 | 8 | `week29/task7_parallel_build.cpp` |
+| 30 | 1–5, 7, 8 | `week30/task1_morton.cpp` … `week30/task5_queries.cpp`, `week30/task7_str_parallel.cpp`, `week30/task8_batch.cpp` |
+| 30 | 6 | `week30/task6_node_avx2.hpp` |
 
 `tasks.hpp` in each week's folder says what each function must do. Do not
 change the tests, the baselines or the benchmarks: the grader uses its own
@@ -158,6 +163,9 @@ the SNAP web graph web-Google if you download it with
 `tools/download_snap.sh`; otherwise a generated web graph of the same size.
 Weeks 23 and 24 use the first vectors of SIFT1M if you download it with
 `tools/download_sift.sh`; otherwise SIFT-like generated vectors (200,000 for
-week 23 and 100,000 for week 24). Weeks 25–28 use generated keys and access traces.
+week 23 and 100,000 for week 24). Weeks 25–28 use generated keys and access traces. Week 29 uses generated
+keys, and for task 6 the IPv4 BGP table of `tools/download_bgp.sh` if you
+download it; otherwise a generated table with the same mix of prefix lengths.
+Week 30 uses generated points that follow the towns of Finland.
 
 Keep your solutions private: do not put them in a public repository.
