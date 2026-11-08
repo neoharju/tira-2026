@@ -8,5 +8,8 @@ vendor
 *.~
 *.un~
 
+*.xz
+*.gz
 *.zip
 *.patch
+
