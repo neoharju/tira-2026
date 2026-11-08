@@ -1,6 +1,6 @@
 # Code for Parts III–V
 
-This folder has the starting code for the tasks of weeks 17–30: one file per
+This folder has the starting code for the tasks of weeks 17–32: one file per
 task, tests for every task, and benchmarks with the speed goals. The task
 descriptions are in the course material.
 
@@ -149,6 +149,9 @@ hardware thread). Close other programs when you measure.
 | 29 | 8 | `week29/task7_parallel_build.cpp` |
 | 30 | 1–5, 7, 8 | `week30/task1_morton.cpp` … `week30/task5_queries.cpp`, `week30/task7_str_parallel.cpp`, `week30/task8_batch.cpp` |
 | 30 | 6 | `week30/task6_node_avx2.hpp` |
+| 31 | 1–8 | `week31/task1_wal.cpp` … `week31/task8_subcompactions.cpp` |
+| 32 | 1–7 | `week32/task1_find.cpp` … `week32/task7_check.cpp` |
+| 32 | 8 | `week32/task8_stress.hpp` (a template, used by the tests) |
 
 `tasks.hpp` in each week's folder says what each function must do. Do not
 change the tests, the baselines or the benchmarks: the grader uses its own
@@ -166,6 +169,8 @@ Weeks 23 and 24 use the first vectors of SIFT1M if you download it with
 week 23 and 100,000 for week 24). Weeks 25–28 use generated keys and access traces. Week 29 uses generated
 keys, and for task 6 the IPv4 BGP table of `tools/download_bgp.sh` if you
 download it; otherwise a generated table with the same mix of prefix lengths.
-Week 30 uses generated points that follow the towns of Finland.
+Week 30 uses generated points that follow the towns of Finland. Weeks 31
+and 32 use generated keys, values and transactions. In week 32 every task
+uses threads, so run all of its tests in the `tsan` preset too.
 
 Keep your solutions private: do not put them in a public repository.
