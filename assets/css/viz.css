@@ -1307,7 +1307,7 @@ html.dark .ix-digit { stroke: #0e1018; }
 .ix-bits .st-cell { min-width: 1.6rem; }
 .ix-bits .st-rowname { min-width: 7.6rem; }
 /* cells */
-.st-svg.ix-hexsvg { max-width: 560px; }
+.st-svg.ix-hexsvg { max-width: 560px; overflow: hidden; border-radius: 10px; }
 .ix-hexcell { fill: var(--vz-node); stroke: var(--border); stroke-width: 1; }
 .ix-hexcell.r0 { fill: var(--vz-cur); }
 .ix-hexcell.r1 { fill: color-mix(in srgb, var(--vz-cur) 55%, var(--vz-node)); }
@@ -1345,3 +1345,8 @@ html.dark .ix-digit { stroke: #0e1018; }
   .ix-bits .st-cell, .ix-n8 .st-cell { min-width: 1.25rem; font-size: .6rem; }
   .ix-bits .st-rowname, .ix-n8 .st-rowname { min-width: 5.2rem; font-size: .6rem; }
 }
+/* figures where the pointer moves the query or draws the box */
+.st-svg.ix-drag { cursor: crosshair; }
+/* a slider with its name and value, or a toggle with its name (viz-indexes.js): one group in the toolbar */
+.viz-tools .ix-ctl { display: inline-flex; align-items: center; gap: .45rem; min-width: 0; }
+.viz-tools .ix-ctl.is-wrap { flex-wrap: wrap; }

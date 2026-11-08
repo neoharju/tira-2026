@@ -18,14 +18,16 @@
     return tools;
   }
   function toggle(tools, label, options, value, onChange) {
-    if (label) tools.appendChild(h("span", { class: "viz-label", text: label }));
+    const group = h("span", { class: "ix-ctl is-wrap" });  // the name stays with its first button
+    tools.appendChild(group);
+    if (label) group.appendChild(h("span", { class: "viz-label", text: label }));
     const buttons = options.map(([key, text]) => {
       const b = h("button", { type: "button", class: "viz-btn is-text", text, "aria-pressed": String(key === value) });
       b.addEventListener("click", () => {
         buttons.forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
         onChange(key);
       });
-      tools.appendChild(b);
+      group.appendChild(b);
       return b;
     });
     return buttons;
@@ -33,15 +35,48 @@
   function slider(tools, label, { min, max, step, value, format }, onInput) {
     const out = h("span", { class: "viz-label st-val" });
     const input = h("input", { type: "range", class: "viz-range st-slider", min, max, step, value, "aria-label": label });
-    const show = () => {
-      input.style.setProperty("--p", `${((input.value - min) / (max - min)) * 100}%`);
+    const show = () => {  // the range can change (sfc-ranges), so read it from the input
+      const lo = +input.min, hi = +input.max;
+      input.style.setProperty("--p", `${hi > lo ? ((input.value - lo) / (hi - lo)) * 100 : 0}%`);
       out.textContent = format(+input.value);
     };
     input.addEventListener("input", () => { show(); onInput(+input.value); });
-    tools.append(h("span", { class: "viz-label", text: label }), input, out);
+    // The arrow keys move this slider; without this, the player of the figure
+    // would take them and step the animation instead.
+    input.addEventListener("keydown", (e) => e.stopPropagation());
+    // one group, so that a narrow toolbar never puts the name and the slider on different lines
+    tools.append(h("span", { class: "ix-ctl" }, h("span", { class: "viz-label", text: label }), input, out));
     show();
+    // Sets the slider from the figure (after a drag), without calling onInput.
+    input.setValue = (v) => { input.value = v; show(); };
     return input;
   }
+  // The point of a pointer event in the coordinates of the SVG's viewBox.
+  function svgPoint(svg, e) {
+    const p = svg.createSVGPoint();
+    p.x = e.clientX;
+    p.y = e.clientY;
+    return p.matrixTransform(svg.getScreenCTM().inverse());
+  }
+  // Calls onDown(point) when the pointer is pressed on the SVG and onMove(point)
+  // while it stays pressed, also outside the SVG.
+  function dragging(svg, onDown, onMove) {
+    let down = false;
+    svg.style.touchAction = "none";
+    svg.classList.add("ix-drag");
+    svg.addEventListener("pointerdown", (e) => {
+      if (e.button > 0) return;
+      down = true;
+      svg.setPointerCapture(e.pointerId);
+      onDown(svgPoint(svg, e));
+    });
+    svg.addEventListener("pointermove", (e) => { if (down) onMove(svgPoint(svg, e)); });
+    const up = () => { down = false; };
+    svg.addEventListener("pointerup", up);
+    svg.addEventListener("pointercancel", up);
+  }
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
   const seg = (g, x1, y1, x2, y2, cls) => s("line", { x1: x1.toFixed(1), y1: y1.toFixed(1), x2: x2.toFixed(1), y2: y2.toFixed(1), class: cls }, g);
   const label = (g, x, y, text, cls = "st-lbl", anchor = "middle") => {
     const t = s("text", { x: x.toFixed(1), y: y.toFixed(1), class: cls, "text-anchor": anchor }, g);
@@ -220,14 +255,48 @@
           ]))));
       side.append(h("p", { class: "ix-note", text: "Bytes: a node of 16 pointers is 144, a Node4 56, a Node16 160 and a leaf 24 (header and pointers as in the C++ code)." }));
     }
+    // The inner nodes of a tree, parents first, and the node that holds a leaf.
+    const nodesOf = (t) => {
+      const out = [];
+      (function walk(n) { if (!n || n.leaf) return; out.push(n); n.kids.forEach(([, c]) => walk(c)); })(t);
+      return out;
+    };
+    const parentOf = (t, key) => {
+      let out = null;
+      (function walk(n) {
+        if (out || !n || n.leaf) return;
+        for (const [d, c] of n.kids) {
+          if (c.leaf === key) { out = { node: n, digit: d }; return; }
+          walk(c);
+        }
+      })(t);
+      return out;
+    };
+    // The captions of ART_CAPS tell what the radix tree does. The plain trie and
+    // lazy expansion get captions made from their own trees: the new nodes and
+    // the place of the leaf.
+    function describe(count) {
+      const key = ART_KEYS[count - 1];
+      if (view === "lazy" && count === 1) return ART_CAPS[1];
+      const after = treeOf(sortedOf(count), view);
+      const old = new Set(nodesOf(treeOf(sortedOf(count - 1), view)).map((n) => `${n.depth}:${n.prefix}`));
+      const fresh = nodesOf(after).filter((n) => !old.has(`${n.depth}:${n.prefix}`));
+      const name = (n) => `${n.prefix || "∅"}·`;
+      const list = `${plural(fresh.length, "new node")} of 16 slots (${fresh.map(name).join(", ")})`;
+      if (count === 1) return `Insert **${key}**. A plain trie has a node for every digit of every key: ${list}, for one key.`;
+      const p = parentOf(after, key);
+      const at = `node ${name(p.node)} at digit ${p.node.depth}, as child ${p.digit}`;
+      if (!fresh.length) return `Insert **${key}**. The nodes on the path of the key are there already: the leaf goes into ${at}.`;
+      if (view === "plain") return `Insert **${key}**. The path of the key needs ${list}. The leaf goes into ${at}.`;
+      const last = fresh[fresh.length - 1], d0 = fresh[0].depth;
+      const other = last.kids.map(([, c]) => c.leaf).find((l) => l && l !== key);
+      return `Insert **${key}**. The leaf ${other} was alone where the new key goes, so both keys move down: ${list}, ${d0 === last.depth ? `for digit ${d0}` : `for the digits ${d0} to ${last.depth}`}. Digit ${last.depth} is the first digit where the two keys differ.`;
+    }
     const player = new Player(fig, {
       frames, interval: 2600,
       apply: (count) => {
         draw(count);
-        const extra = view === "plain" ? " **Plain trie:** every key has a node on all four levels, and most slots are empty."
-          : view === "lazy" ? " **Lazy expansion:** a key is a leaf as soon as it is alone, but every level still has a node of 16 slots."
-            : "";
-        ui.setCaption(ART_CAPS[count] + (count ? extra : ""));
+        ui.setCaption(view === "art" || count === 0 ? ART_CAPS[count] : describe(count));
       },
     });
   });
@@ -279,7 +348,7 @@
       label(svg, X(90), Y(56) - 14, "the smallest kind (ART)", "st-tick st-curve-lbl c5");
       s("circle", { cx: X(c), cy: Y(k.bytes / c), r: 6, class: "st-dot c5 is-on" }, svg);
       s("circle", { cx: X(c), cy: Y(2064 / c), r: 4, class: "st-dot c0" }, svg);
-      ui.setCaption(`A node with **${c}** children is a **${k.name}**: ${k.bytes} bytes, ${(k.bytes / c).toFixed(1)} bytes per child. A Node256 for the same children would need 2064 bytes, ${(2064 / c).toFixed(1)} per child. With the smallest kind, a node never costs more than 42 bytes per child: the worst case is a Node256 with 49 children.${k.name === "Node48" ? " A Node48 finds a child with two loads: index[b], then the pointer." : k.name === "Node16" ? " A Node16 finds a byte with one SIMD compare." : ""}`);
+      ui.setCaption(`A node with **${c}** children is a **${k.name}**: ${k.bytes} bytes, ${(k.bytes / c).toFixed(1)} bytes per child. A Node256 for the same children would need 2064 bytes, ${(2064 / c).toFixed(1)} per child. With the smallest kind, a node never costs more than 42.1 bytes per child: the worst case is a Node256 with 49 children (2064 / 49).${k.name === "Node48" ? " A Node48 finds a child with two loads: index[b], then the pointer." : k.name === "Node16" ? " A Node16 finds a byte with one SIMD compare." : ""}`);
     }
     draw();
   });
@@ -373,7 +442,7 @@
         if (f.show >= 3) box.append(cells(f.hits.map((x) => (x ? "FF" : "00")), (j) => (f.hits[j] ? (j >= count ? "is-bad" : "is-on") : "is-dim"), mode === "find" ? "cmpeq" : "cmplt"));
         if (f.show >= 4) box.append(cells(f.hits.map((x) => (x ? "1" : "0")), (j) => (f.hits[j] ? (j >= count ? "is-bad" : "is-on") : "is-dim"), "movemask"));
         if (f.show >= 5) box.append(cells(f.hits.map((x, j) => (x && j < count ? "1" : "0")), (j) => (f.hits[j] && j < count ? "is-on" : "is-dim"), "& count"));
-        if (f.show >= 6) box.append(h("div", { class: "st-lanesbox" }, h("span", { class: `st-count${f.ok === false ? " is-bad" : ""}` }, mode === "find" ? "countr_zero" : "popcount", h("b", { text: String(f.answer) }))));
+        if (f.show >= 6) box.append(h("div", { class: "st-lanesbox" }, h("span", { class: `st-count${f.ok === false ? " is-bad" : ""}` }, mode === "place" ? "popcount" : f.answer >= 0 ? "countr_zero" : "m == 0, return", h("b", { text: String(f.answer) }))));
         code.set(f.line);
         ui.setCaption(f.cap);
       },
@@ -547,7 +616,7 @@
         ui.setCaption(done
           ? `All groups are built after **${sc.end.toFixed(1)}** time units; one thread needs ${sc.one.toFixed(0)}. Speedup **${speedup.toFixed(2)}** on ${T} threads.${keys === "skewed" && !split ? " One thread builds group 3, which has 70 % of the keys, while the other three wait: Amdahl's law." : keys === "skewed" ? " Group 3 was split again into 16 groups, and all threads share them." : " Random keys fill the groups evenly, so the threads finish at about the same time."}`
           : t === 0 ? `${keys === "random" ? "Random keys: the 16 groups have about the same size." : "Skewed keys: group 3 has 70 % of the keys."} First, all threads group the keys (grey). Then each free thread takes the next group.`
-            : `Time ${t.toFixed(1)}: ${sc.blocks.filter((b) => b.from <= t && b.to > t).length} of ${T} threads are building a group.`);
+            : (() => { const busy = sc.blocks.filter((b) => b.from <= t && b.to > t).length; return `Time ${t.toFixed(1)}: ${busy} of ${T} threads ${busy === 1 ? "is" : "are"} building a group.`; })());
       },
     });
   });
@@ -595,15 +664,37 @@
     ui.side.appendChild(side);
     const tools = toolbar(ui);
     toggle(tools, "Curve", [["z", "Z-order"], ["h", "Hilbert"]], curve, (v) => { curve = v; draw(); });
-    slider(tools, "x", { min: 0, max: N - 1, step: 1, value: box.x, format: (v) => String(v) }, (v) => { box.x = v; draw(); });
-    slider(tools, "y", { min: 0, max: N - 1, step: 1, value: box.y, format: (v) => String(v) }, (v) => { box.y = v; draw(); });
-    slider(tools, "width", { min: 1, max: N, step: 1, value: box.w, format: (v) => String(v) }, (v) => { box.w = v; draw(); });
-    slider(tools, "height", { min: 1, max: N, step: 1, value: box.h, format: (v) => String(v) }, (v) => { box.h = v; draw(); });
+    // The box always stays on the grid: the x slider goes up to N - width, and a
+    // width that does not fit at x moves the box to the left.
+    const num = (v) => String(v);
+    const sl = {
+      x: slider(tools, "x", { min: 0, max: N - box.w, step: 1, value: box.x, format: num }, (v) => { box.x = v; update(); }),
+      y: slider(tools, "y", { min: 0, max: N - box.h, step: 1, value: box.y, format: num }, (v) => { box.y = v; update(); }),
+      w: slider(tools, "width", { min: 1, max: N, step: 1, value: box.w, format: num }, (v) => { box.w = v; box.x = Math.min(box.x, N - v); update(); }),
+      h: slider(tools, "height", { min: 1, max: N, step: 1, value: box.h, format: num }, (v) => { box.h = v; box.y = Math.min(box.y, N - v); update(); }),
+    };
+    tools.appendChild(h("span", { class: "viz-label", text: "Or drag on the grid to draw the box." }));
+    function update() {
+      sl.x.max = N - box.w;
+      sl.y.max = N - box.h;
+      for (const k of ["x", "y", "w", "h"]) sl[k].setValue(box[k]);
+      draw();
+    }
+    // A drag on the grid draws a new box, from the cell where it starts to the
+    // cell under the pointer.
+    const cellAt = (p) => ({ x: clamp(Math.floor((p.x - M) / C), 0, N - 1), y: clamp(N - 1 - Math.floor((p.y - M) / C), 0, N - 1) });
+    let from = null;
+    const stretch = (p) => {
+      const c = cellAt(p);
+      box = { x: Math.min(from.x, c.x), y: Math.min(from.y, c.y), w: Math.abs(c.x - from.x) + 1, h: Math.abs(c.y - from.y) + 1 };
+      update();
+    };
+    dragging(svg, (p) => { from = cellAt(p); stretch(p); }, stretch);
     const key = (x, y) => (curve === "z" ? zKey(x, y) : hKey(N, x, y));
     const sx = (x) => M + x * C + C / 2, sy = (y) => M + (N - 1 - y) * C + C / 2;  // y grows upward, as on a map
     function draw() {
       svg.textContent = "";
-      const x1 = Math.min(N - 1, box.x + box.w - 1), y1 = Math.min(N - 1, box.y + box.h - 1);
+      const x1 = box.x + box.w - 1, y1 = box.y + box.h - 1;
       const inside = [];
       for (let x = box.x; x <= x1; x++) for (let y = box.y; y <= y1; y++) inside.push(key(x, y));
       inside.sort((a, b) => a - b);
@@ -630,7 +721,8 @@
         h("span", { text: "cells in the box" }), h("b", { text: String(inside.length) }),
         h("span", { text: "key ranges for exactly these cells" }), h("b", { text: String(ranges) }),
         h("span", { text: "cells in one range, smallest to largest key" }), h("b", { text: String(extra) }))));
-      ui.setCaption(`The box covers **${inside.length}** cells. On the ${curve === "z" ? "Z-order" : "Hilbert"} curve they form **${ranges}** runs of consecutive keys (one color per run): ${ranges} range scan${ranges === 1 ? "" : "s"} in a B+ tree. A single range from key ${lo} to key ${hi} would read ${extra} cells, ${extra - inside.length} of them outside the box (dashed).`);
+      const n = inside.length;
+      ui.setCaption(`The box covers **${plural(n, "cell")}**. On the ${curve === "z" ? "Z-order" : "Hilbert"} curve, ${n === 1 ? "its key is" : "their keys form"} **${plural(ranges, "run")}** of consecutive keys (one color per run): ${plural(ranges, "range scan")} in a B+ tree. ${ranges === 1 ? "That one range reads exactly the cells of the box." : `A single range from key ${lo} to key ${hi} would read ${plural(extra, "cell")}, ${extra - n} of them outside the box (dashed).`}`);
     }
     draw();
   });
@@ -862,24 +954,29 @@
 
   /* ---------------------------------------------- range and nearest queries */
   register("rtree-query", (fig) => {
-    let mode = "range", q = { x: 230, y: 150, w: 90, h: 70 }, qp = { x: 140, y: 150 }, K = 3;
+    // One place for both queries: the centre of the range box and the query
+    // point of the nearest-neighbour search. Sliders or a drag move it.
+    let mode = "range";
+    const at = { x: 275, y: 185 }, QW = 90, QH = 70, K = 3;
     const levels = strLevels(MAP_POINTS);  // leaves, the level of 4 nodes, the root
-    const leaves = levels[0].nodes, mids = levels[1].nodes, root = levels[2].nodes[0];
+    const leaves = levels[0].nodes, mids = levels[1].nodes;
     const meets = (b, r) => b.x0 <= r.x1 && r.x0 <= b.x1 && b.y0 <= r.y1 && r.y0 <= b.y1;
     const mindist = (b, p) => Math.hypot(Math.max(b.x0 - p.x, 0, p.x - b.x1), Math.max(b.y0 - p.y, 0, p.y - b.y1));
     function make() {
       const fr = [];
       if (mode === "range") {
-        const r = { x0: q.x, y0: q.y, x1: q.x + q.w, y1: q.y + q.h };
+        const r = { x0: at.x - QW / 2, y0: at.y - QH / 2, x1: at.x + QW / 2, y1: at.y + QH / 2 };
         const st = { mids: new Map(), leaves: new Map(), found: [] };
         const push = (cap) => fr.push({ mids: new Map(st.mids), leaves: new Map(st.leaves), found: st.found.slice(), cap, r });
         push("A range query starts at the root, which holds the boxes of its 4 children.");
         mids.forEach((m, i) => st.mids.set(i, meets(m.box, r) ? "on" : "off"));
-        push(`The root tests the 4 boxes of its children: ${[...st.mids.values()].filter((v) => v === "on").length} of them meet the query box (green). The others are skipped with everything below them.`);
+        const on = [...st.mids.values()].filter((v) => v === "on").length;
+        push(`The root tests the 4 boxes of its children: ${on} of them ${on === 1 ? "meets" : "meet"} the query box (green). The others are skipped with everything below them.`);
         mids.forEach((m, i) => {
           if (!meets(m.box, r)) return;
           m.kids.forEach((li) => st.leaves.set(li, meets(leaves[li].box, r) ? "on" : "off"));
-          push(`Node ${i + 1} tests its 4 leaf boxes: ${m.kids.filter((li) => meets(leaves[li].box, r)).length} meet the query.`);
+          const hit = m.kids.filter((li) => meets(leaves[li].box, r)).length;
+          push(`Node ${i + 1} tests its 4 leaf boxes: ${hit} ${hit === 1 ? "meets" : "meet"} the query.`);
           m.kids.forEach((li) => {
             if (!meets(leaves[li].box, r)) return;
             const got = leaves[li].kids.filter((pi) => meets({ x0: MAP_POINTS[pi].x, y0: MAP_POINTS[pi].y, x1: MAP_POINTS[pi].x, y1: MAP_POINTS[pi].y }, r));
@@ -889,7 +986,7 @@
           });
         });
         const read = 1 + [...st.mids.values()].filter((v) => v === "on").length + [...st.leaves.values()].filter((v) => v === "read").length;
-        push(`Done: **${st.found.length}** points found, and **${read}** of the ${1 + mids.length + leaves.length} nodes read.`);
+        push(`Done: **${plural(st.found.length, "point")}** found, and **${read}** of the ${1 + mids.length + leaves.length} nodes read.`);
       } else {
         const heap = [{ d: 0, kind: "root" }];
         const found = [];
@@ -906,9 +1003,9 @@
             push(`The nearest item is **point ${it.id}**, at ${it.d.toFixed(0)}: answer ${found.length}. Nothing in the queue is nearer, and MINDIST never overestimates.`, it.d);
             continue;
           }
-          if (it.kind === "root") mids.forEach((m, i) => { heap.push({ d: mindist(m.box, qp), kind: "mid", id: i }); st.mids.set(i, "off"); });
-          if (it.kind === "mid") { st.mids.set(it.id, "on"); mids[it.id].kids.forEach((li) => { heap.push({ d: mindist(leaves[li].box, qp), kind: "leaf", id: li }); st.leaves.set(li, "off"); }); }
-          if (it.kind === "leaf") { st.leaves.set(it.id, "read"); leaves[it.id].kids.forEach((pi) => heap.push({ d: Math.hypot(MAP_POINTS[pi].x - qp.x, MAP_POINTS[pi].y - qp.y), kind: "point", id: pi })); }
+          if (it.kind === "root") mids.forEach((m, i) => { heap.push({ d: mindist(m.box, at), kind: "mid", id: i }); st.mids.set(i, "off"); });
+          if (it.kind === "mid") { st.mids.set(it.id, "on"); mids[it.id].kids.forEach((li) => { heap.push({ d: mindist(leaves[li].box, at), kind: "leaf", id: li }); st.leaves.set(li, "off"); }); }
+          if (it.kind === "leaf") { st.leaves.set(it.id, "read"); leaves[it.id].kids.forEach((pi) => heap.push({ d: Math.hypot(MAP_POINTS[pi].x - at.x, MAP_POINTS[pi].y - at.y), kind: "point", id: pi })); }
           push(`The nearest item is ${fmtItem(it).split(":")[0]} (distance ${it.d.toFixed(0)}): it puts its children into the queue with their distances.`, found.length ? fr[fr.length - 1].radius : 0);
         }
         const read = 1 + [...st.mids.values()].filter((v) => v === "on").length + [...st.leaves.values()].filter((v) => v === "read").length;
@@ -923,7 +1020,22 @@
     ui.side.appendChild(side);
     const tools = toolbar(ui);
     toggle(tools, "Query", [["range", "range"], ["knn", "3 nearest"]], mode, (v) => { mode = v; player.setFrames(make()); });
-    slider(tools, "x", { min: 20, max: 320, step: 5, value: q.x, format: (v) => String(v) }, (v) => { q.x = v; qp.x = v + q.w / 2 - 50; player.setFrames(make(), true); });
+    // After a move, the figure shows the answer at once; Restart replays the steps.
+    const moved = () => {
+      sx.setValue(at.x);
+      sy.setValue(at.y);
+      player.setFrames(make());
+      player.go(player.frames.length - 1);
+    };
+    const sx = slider(tools, "x", { min: QW / 2, max: MAP_W - QW / 2, step: 5, value: at.x, format: String }, (v) => { at.x = v; moved(); });
+    const sy = slider(tools, "y", { min: QH / 2, max: MAP_H - QH / 2, step: 5, value: at.y, format: String }, (v) => { at.y = v; moved(); });
+    tools.appendChild(h("span", { class: "viz-label", text: "Or drag on the map." }));
+    const place = (p) => {
+      at.x = clamp(Math.round(p.x / 5) * 5, QW / 2, MAP_W - QW / 2);
+      at.y = clamp(Math.round((MAP_H - p.y) / 5) * 5, QH / 2, MAP_H - QH / 2);
+      moved();
+    };
+    dragging(svg, place, place);
     const player = new Player(fig, {
       frames: make(), interval: 1800,
       apply: (f) => {
@@ -934,12 +1046,12 @@
         if (f.r) rect(svg, f.r.x0, flipY(f.r.y1), f.r.x1 - f.r.x0, f.r.y1 - f.r.y0, "ix-qbox", 2);
         for (const p of MAP_POINTS) s("circle", { cx: p.x, cy: flipY(p.y), r: f.found.includes(p.id) ? 4.5 : 2.6, class: `ix-pt${f.found.includes(p.id) ? " is-found" : ""}` }, svg);
         if (mode === "knn") {
-          if (f.radius) s("circle", { cx: qp.x, cy: flipY(qp.y), r: f.radius, class: "ix-radius" }, svg);
-          s("circle", { cx: qp.x, cy: flipY(qp.y), r: 5, class: "ix-centre" }, svg);
+          if (f.radius) s("circle", { cx: at.x, cy: flipY(at.y), r: f.radius, class: "ix-radius" }, svg);
+          s("circle", { cx: at.x, cy: flipY(at.y), r: 5, class: "ix-centre" }, svg);
         }
         side.textContent = "";
         if (mode === "knn") side.append(panel("priority queue", "nearest first", h("div", { class: "ix-queue" }, ...(f.heap || []).map((t) => h("span", { text: t })))));
-        else side.append(panel("found", `${f.found.length} points`, h("div", { class: "ix-queue" }, h("span", { text: f.found.length ? f.found.slice().sort((a, b) => a - b).join(", ") : "–" }))));
+        else side.append(panel("found", plural(f.found.length, "point"), h("div", { class: "ix-queue" }, h("span", { text: f.found.length ? f.found.slice().sort((a, b) => a - b).join(", ") : "–" }))));
         ui.setCaption(f.cap);
       },
     });
@@ -949,8 +1061,8 @@
   register("rtree-simd", (fig) => {
     // 6 slots in use and 2 empty ones, on a map of 400 x 220
     const SLOTS = [[20, 30, 90, 80], [60, 120, 150, 190], [130, 40, 200, 100], [210, 130, 280, 200], [240, 30, 330, 90], [320, 110, 380, 190]];
-    let qx = 150;
-    const QW = 110, QY0 = 70, QY1 = 150;
+    let qx = 150, qy = 70;
+    const QW = 110, QH = 80;
     const ui = frame(fig, { title: "Eight boxes in one compare", kicker: "Try it" });
     ui.stage.classList.add("is-plain");
     const W = 400, H = 220;
@@ -958,10 +1070,20 @@
     const box = h("div", { class: "st-swiss ix-n8" });
     ui.stage.appendChild(box);
     const tools = toolbar(ui);
-    slider(tools, "query x", { min: 0, max: W - QW, step: 5, value: qx, format: (v) => String(v) }, (v) => { qx = v; draw(); });
+    const sx = slider(tools, "query x", { min: 0, max: W - QW, step: 5, value: qx, format: String }, (v) => { qx = v; draw(); });
+    const sy = slider(tools, "query y", { min: 0, max: H - QH, step: 5, value: qy, format: String }, (v) => { qy = v; draw(); });
+    tools.appendChild(h("span", { class: "viz-label", text: "Or drag the query on the map." }));
+    const place = (p) => {  // the pointer is the centre of the query box
+      qx = clamp(Math.round((p.x - QW / 2) / 5) * 5, 0, W - QW);
+      qy = clamp(Math.round((H - p.y - QH / 2) / 5) * 5, 0, H - QH);
+      sx.setValue(qx);
+      sy.setValue(qy);
+      draw();
+    };
+    dragging(svg, place, place);
     const fmt = (v) => (v === Infinity ? "∞" : v === -Infinity ? "−∞" : String(v));
     function draw() {
-      const q = { x0: qx, y0: QY0, x1: qx + QW, y1: QY1 };
+      const q = { x0: qx, y0: qy, x1: qx + QW, y1: qy + QH };
       const slots = Array.from({ length: 8 }, (_, i) => (i < SLOTS.length ? { x0: SLOTS[i][0], y0: SLOTS[i][1], x1: SLOTS[i][2], y1: SLOTS[i][3] } : { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity }));
       const rows = [
         ["min_x ≤ q.max_x", (b) => b.x0 <= q.x1],
@@ -984,7 +1106,7 @@
       for (const [name, f] of rows) box.append(cells(slots.map((b) => (f(b) ? "1" : "0")), (i) => (f(slots[i]) ? "is-on" : "is-dim"), name));
       box.append(cells(all.map((v) => (v ? "1" : "0")), (i) => (all[i] ? "is-hit" : "is-dim"), "AND"));
       const mask = all.reduce((m, v, i) => m | ((v ? 1 : 0) << i), 0);
-      ui.setCaption(`Each row is one _mm256_cmp_ps on 8 lanes. The AND of the four rows, after _mm256_movemask_ps, is the mask **0b${mask.toString(2).padStart(8, "0")}** (slot 0 on the right): ${all.filter(Boolean).length} of the boxes meet the query. The empty slots 6 and 7 have min = +∞ and max = −∞, so the first row is 0 for them, without a test of the count.`);
+      ui.setCaption(`Each row is one _mm256_cmp_ps on 8 lanes. The AND of the four rows, after _mm256_movemask_ps, is the mask **0b${mask.toString(2).padStart(8, "0")}** (slot 0 on the right): ${all.filter(Boolean).length} of the boxes ${all.filter(Boolean).length === 1 ? "meets" : "meet"} the query. The empty slots 6 and 7 have min = +∞ and max = −∞, so the first row is 0 for them, without a test of the count.`);
     }
     draw();
   });
