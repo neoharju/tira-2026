@@ -551,4 +551,441 @@
       },
     });
   });
+
+  /* ========================================== chapter 30: spatial indexes */
+
+  // The key of cell (x, y) of an n x n grid on a curve.
+  function zKey(x, y) {
+    let k = 0;
+    for (let i = 0; i < 16; i++) k |= (((x >> i) & 1) << (2 * i)) | (((y >> i) & 1) << (2 * i + 1));
+    return k >>> 0;
+  }
+  function hKey(n, x, y) {  // the loop of the chapter (Wikipedia's xy2d)
+    let d = 0;
+    for (let s = n >> 1; s > 0; s >>= 1) {
+      const rx = (x & s) > 0 ? 1 : 0, ry = (y & s) > 0 ? 1 : 0;
+      d += s * s * ((3 * rx) ^ ry);
+      if (ry === 0) {
+        if (rx === 1) { x = n - 1 - x; y = n - 1 - y; }
+        const t = x; x = y; y = t;
+      }
+    }
+    return d;
+  }
+  function rng32(seed) {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6d2b79f5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  /* ---------------------------------------------- curves and key ranges */
+  register("sfc-ranges", (fig) => {
+    const N = 16;
+    let curve = "z", box = { x: 5, y: 3, w: 6, h: 5 };
+    const ui = frame(fig, { title: "A box on a space-filling curve", kicker: "Try it", split: true });
+    ui.stage.classList.add("is-plain");
+    const C = 21, M = 8, W = N * C + 2 * M;
+    const svg = svgBox(ui.stage, W, W, "ix-grid");
+    const side = h("div", { class: "st-side" });
+    ui.side.appendChild(side);
+    const tools = toolbar(ui);
+    toggle(tools, "Curve", [["z", "Z-order"], ["h", "Hilbert"]], curve, (v) => { curve = v; draw(); });
+    slider(tools, "x", { min: 0, max: N - 1, step: 1, value: box.x, format: (v) => String(v) }, (v) => { box.x = v; draw(); });
+    slider(tools, "y", { min: 0, max: N - 1, step: 1, value: box.y, format: (v) => String(v) }, (v) => { box.y = v; draw(); });
+    slider(tools, "width", { min: 1, max: N, step: 1, value: box.w, format: (v) => String(v) }, (v) => { box.w = v; draw(); });
+    slider(tools, "height", { min: 1, max: N, step: 1, value: box.h, format: (v) => String(v) }, (v) => { box.h = v; draw(); });
+    const key = (x, y) => (curve === "z" ? zKey(x, y) : hKey(N, x, y));
+    const sx = (x) => M + x * C + C / 2, sy = (y) => M + (N - 1 - y) * C + C / 2;  // y grows upward, as on a map
+    function draw() {
+      svg.textContent = "";
+      const x1 = Math.min(N - 1, box.x + box.w - 1), y1 = Math.min(N - 1, box.y + box.h - 1);
+      const inside = [];
+      for (let x = box.x; x <= x1; x++) for (let y = box.y; y <= y1; y++) inside.push(key(x, y));
+      inside.sort((a, b) => a - b);
+      const rangeOf = new Map();
+      let ranges = 0;
+      inside.forEach((k, i) => { if (i === 0 || k !== inside[i - 1] + 1) ranges++; rangeOf.set(k, ranges - 1); });
+      const lo = inside[0], hi = inside[inside.length - 1];
+      for (let x = 0; x < N; x++)
+        for (let y = 0; y < N; y++) {
+          const k = key(x, y);
+          const r = rangeOf.get(k);
+          const cls = r != null ? `ix-cell c${r % 6}` : k >= lo && k <= hi ? "ix-cell is-extra" : "ix-cell";
+          rect(svg, M + x * C + 1, M + (N - 1 - y) * C + 1, C - 2, C - 2, cls, 3);
+        }
+      // the curve through the cells, in the order of the keys
+      const order = [];
+      for (let x = 0; x < N; x++) for (let y = 0; y < N; y++) order.push([key(x, y), x, y]);
+      order.sort((a, b) => a[0] - b[0]);
+      s("path", { d: order.map(([, x, y], i) => `${i ? "L" : "M"}${sx(x)} ${sy(y)}`).join(""), class: "ix-curve" }, svg);
+      rect(svg, M + box.x * C, M + (N - 1 - y1) * C, (x1 - box.x + 1) * C, (y1 - box.y + 1) * C, "ix-qbox", 2);
+      const extra = order.filter(([k]) => k >= lo && k <= hi).length;
+      side.textContent = "";
+      side.append(panel("the box", curve === "z" ? "Z-order" : "Hilbert", h("div", { class: "st-kv" },
+        h("span", { text: "cells in the box" }), h("b", { text: String(inside.length) }),
+        h("span", { text: "key ranges for exactly these cells" }), h("b", { text: String(ranges) }),
+        h("span", { text: "cells in one range, smallest to largest key" }), h("b", { text: String(extra) }))));
+      ui.setCaption(`The box covers **${inside.length}** cells. On the ${curve === "z" ? "Z-order" : "Hilbert"} curve they form **${ranges}** runs of consecutive keys (one color per run): ${ranges} range scan${ranges === 1 ? "" : "s"} in a B+ tree. A single range from key ${lo} to key ${hi} would read ${extra} cells, ${extra - inside.length} of them outside the box (dashed).`);
+    }
+    draw();
+  });
+
+  /* ---------------------------------------------- Morton keys with pdep */
+  register("morton-bits", (fig) => {
+    let x = 5, y = 3;
+    const ui = frame(fig, { title: "A Morton key with pdep", kicker: "Try it" });
+    ui.stage.classList.add("is-plain");
+    const box = h("div", { class: "st-swiss ix-bits" });
+    ui.stage.appendChild(box);
+    const tools = toolbar(ui);
+    slider(tools, "x", { min: 0, max: 255, step: 1, value: x, format: (v) => String(v) }, (v) => { x = v; draw(); });
+    slider(tools, "y", { min: 0, max: 255, step: 1, value: y, format: (v) => String(v) }, (v) => { y = v; draw(); });
+    const bit = (v, i) => (v >> i) & 1;
+    function draw() {
+      box.textContent = "";
+      const places = Array.from({ length: 16 }, (_, j) => 15 - j);  // bit 15 on the left
+      const key = zKey(x, y);
+      box.append(cells(places, () => "is-index", "bit"));
+      box.append(cells(places.map((p) => (p < 8 ? bit(x, p) : "")), (j) => (places[j] < 8 ? "c5" : "is-empty"), "x"));
+      box.append(cells(places.map((p) => (p % 2 === 0 ? "1" : "0")), (j) => (places[j] % 2 === 0 ? "is-on" : "is-dim"), "mask 0x5555"));
+      box.append(cells(places.map((p) => (p % 2 === 0 ? bit(x, p / 2) : "0")), (j) => (places[j] % 2 === 0 ? "c5" : "is-dim"), "pdep(x)"));
+      box.append(cells(places.map((p) => (p < 8 ? bit(y, p) : "")), (j) => (places[j] < 8 ? "c0" : "is-empty"), "y"));
+      box.append(cells(places.map((p) => (p % 2 === 1 ? bit(y, (p - 1) / 2) : "0")), (j) => (places[j] % 2 === 1 ? "c0" : "is-dim"), "pdep(y, 0xAAAA)"));
+      box.append(cells(places.map((p) => bit(key, p)), (j) => (places[j] % 2 === 0 ? "c5" : "c0"), "key"));
+      ui.setCaption(`x = ${x} (${x.toString(2).padStart(8, "0")}) and y = ${y} (${y.toString(2).padStart(8, "0")}). pdep puts the 8 bits of x, in order, into the places of the 1 bits of the mask 0x5555: the even places. The bits of y go into the odd places, with the mask 0xAAAA. The OR of the two is the Morton key **${key}**. pext with the same masks takes x and y back out.`);
+    }
+    draw();
+  });
+
+  /* ---------------------------------------------- squares or hexagons */
+  register("hex-cells", (fig) => {
+    let grid = "hex", k = 2;
+    const ui = frame(fig, { title: "Cells around a point", kicker: "Try it" });
+    ui.stage.classList.add("is-plain");
+    const W = 520, H = 330;
+    const svg = svgBox(ui.stage, W, H, "ix-hexsvg");
+    const tools = toolbar(ui);
+    toggle(tools, "Cells", [["square", "squares"], ["hex", "hexagons"]], grid, (v) => { grid = v; draw(); });
+    slider(tools, "k", { min: 0, max: 4, step: 1, value: k, format: (v) => String(v) }, (v) => { k = v; draw(); });
+    const cx = W / 2, cy = H / 2;
+    function draw() {
+      svg.textContent = "";
+      const ringOf = [];
+      if (grid === "square") {
+        const side = 34;  // a square of the same area as the hexagon below
+        for (let i = -8; i <= 8; i++)
+          for (let j = -5; j <= 5; j++) {
+            const ring = Math.max(Math.abs(i), Math.abs(j));
+            const x = cx + i * side, y = cy + j * side;
+            if (x < -side || x > W + side || y < -side || y > H + side) continue;
+            rect(svg, x - side / 2 + 1, y - side / 2 + 1, side - 2, side - 2, ring <= k ? `ix-hexcell r${ring}` : "ix-hexcell", 3);
+            if (ring === k) ringOf.push(Math.hypot(i, j) * side);
+          }
+        if (k > 0) {
+          seg(svg, cx, cy, cx + side, cy, "ix-dist");
+          seg(svg, cx, cy, cx + side, cy - side, "ix-dist");
+          label(svg, cx + side / 2, cy + 9, "1", "ix-dist-lbl");
+          label(svg, cx + side / 2 + 6, cy - side / 2 - 6, "1.41", "ix-dist-lbl");
+        }
+        const n = (2 * k + 1) ** 2;
+        const near = k * 34, far = k * 34 * Math.SQRT2;
+        ui.setCaption(`Squares, like geohash cells: the cells within ${k} step${k === 1 ? "" : "s"} are ${n} cells${k === 1 ? ", the 9 cells of a Redis radius query" : ""}. A square has 4 neighbours across an edge, 1 cell away, and 4 across a corner, 1.41 away.${k ? ` The centres of ring ${k} are between ${(near / 34).toFixed(2)} and ${(far / 34).toFixed(2)} cells away: the block is a square, not a circle.` : ""}`);
+      } else {
+        const size = 21.1;  // corner distance: a hexagon of the area of the square above
+        const D = Math.sqrt(3) * size;  // the distance between the centres of neighbours
+        const corners = (x, y) => Array.from({ length: 6 }, (_, i) => {
+          const a = Math.PI / 180 * (60 * i - 30);
+          return `${(x + (size - 1.2) * Math.cos(a)).toFixed(1)},${(y + (size - 1.2) * Math.sin(a)).toFixed(1)}`;
+        }).join(" ");
+        for (let q = -10; q <= 10; q++)
+          for (let r = -6; r <= 6; r++) {
+            const x = cx + size * Math.sqrt(3) * (q + r / 2), y = cy + size * 1.5 * r;
+            if (x < -size || x > W + size || y < -size || y > H + size) continue;
+            const ring = (Math.abs(q) + Math.abs(r) + Math.abs(q + r)) / 2;
+            s("polygon", { points: corners(x, y), class: ring <= k ? `ix-hexcell r${ring}` : "ix-hexcell" }, svg);
+            if (ring === k) ringOf.push(Math.hypot(x - cx, y - cy));
+          }
+        if (k > 0) {
+          for (let i = 0; i < 6; i++) {
+            const a = Math.PI / 3 * i;
+            seg(svg, cx, cy, cx + D * Math.cos(a), cy + D * Math.sin(a), "ix-dist");
+          }
+          label(svg, cx + D / 2, cy - 8, "1", "ix-dist-lbl");
+        }
+        const n = 1 + 3 * k * (k + 1);
+        const near = ringOf.length ? Math.min(...ringOf) / D : 0, far = ringOf.length ? Math.max(...ringOf) / D : 0;
+        ui.setCaption(`Hexagons, like H3 cells: the cells within ${k} step${k === 1 ? "" : "s"} are 1 + 3k(k + 1) = ${n} cells. All 6 neighbours are across an edge, at the same distance.${k ? ` The centres of ring ${k} are between ${near.toFixed(2)} and ${far.toFixed(2)} steps away: closer to a circle than the squares.` : ""}`);
+      }
+      s("circle", { cx, cy, r: 4, class: "ix-centre" }, svg);
+    }
+    draw();
+  });
+
+  /* ---------------------------------------------- packing an R-tree */
+  // 64 points of a small map (towns and some scattered points), packed into
+  // leaves of 4 points and nodes of 4 children.
+  const MAP_W = 400, MAP_H = 300;
+  const MAP_POINTS = (() => {
+    const r = rng32(30);
+    const towns = [[95, 210, 0.3], [270, 90, 0.25], [300, 220, 0.2], [150, 80, 0.1]];
+    const pts = [];
+    while (pts.length < 64) {
+      let x, y;
+      if (r() < 0.75) {
+        const u = r();
+        let acc = 0, t = towns[0];
+        for (const tw of towns) { acc += tw[2] / 0.85; if (u <= acc) { t = tw; break; } }
+        const a = 2 * Math.PI * r(), d = 34 * Math.sqrt(-2 * Math.log(1 - r() * 0.999)) * 0.6;
+        x = t[0] + d * Math.cos(a);
+        y = t[1] + d * Math.sin(a);
+      } else {
+        x = 15 + r() * (MAP_W - 30);
+        y = 15 + r() * (MAP_H - 30);
+      }
+      if (x > 8 && x < MAP_W - 8 && y > 8 && y < MAP_H - 8) pts.push({ x: Math.round(x), y: Math.round(y), id: pts.length });
+    }
+    return pts;
+  })();
+  const unionBox = (bs) => bs.reduce((u, b) => ({ x0: Math.min(u.x0, b.x0), y0: Math.min(u.y0, b.y0), x1: Math.max(u.x1, b.x1), y1: Math.max(u.y1, b.y1) }), { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity });
+  // STR with fanout 4: returns the levels, each a list of nodes {box, kids (ids of the level below)} and the slices.
+  function strLevels(points, B = 4) {
+    let entries = points.map((p) => ({ box: { x0: p.x, y0: p.y, x1: p.x, y1: p.y }, id: p.id }));
+    const levels = [];
+    for (;;) {
+      if (entries.length <= B) {
+        levels.push({ nodes: [{ box: unionBox(entries.map((e) => e.box)), kids: entries.map((e) => e.id) }], cuts: [] });
+        return levels;
+      }
+      const P = Math.ceil(entries.length / B);
+      let S = Math.floor(Math.sqrt(P));
+      while (S * S < P) S++;
+      const cx = (e) => e.box.x0 + e.box.x1, cy = (e) => e.box.y0 + e.box.y1;
+      entries.sort((a, b) => cx(a) - cx(b) || cy(a) - cy(b) || a.id - b.id);
+      const nodes = [], cuts = [];
+      for (let s0 = 0; s0 < entries.length; s0 += S * B) {
+        const slice = entries.slice(s0, s0 + S * B).sort((a, b) => cy(a) - cy(b) || cx(a) - cx(b) || a.id - b.id);
+        if (s0 > 0) cuts.push((entries[s0 - 1].box.x1 + slice.reduce((m, e) => Math.min(m, e.box.x0), Infinity)) / 2);
+        for (let r0 = 0; r0 < slice.length; r0 += B) {
+          const run = slice.slice(r0, r0 + B);
+          nodes.push({ box: unionBox(run.map((e) => e.box)), kids: run.map((e) => e.id) });
+        }
+      }
+      levels.push({ nodes, cuts });
+      entries = nodes.map((n, i) => ({ box: n.box, id: i }));
+    }
+  }
+  function packLevels(points, order, B = 4) {
+    let entries = order.map((i) => ({ box: { x0: points[i].x, y0: points[i].y, x1: points[i].x, y1: points[i].y }, id: i }));
+    const levels = [];
+    for (;;) {
+      const nodes = [];
+      for (let r0 = 0; r0 < entries.length; r0 += B) {
+        const run = entries.slice(r0, r0 + B);
+        nodes.push({ box: unionBox(run.map((e) => e.box)), kids: run.map((e) => e.id) });
+      }
+      levels.push({ nodes, cuts: [] });
+      if (nodes.length === 1) return levels;
+      entries = nodes.map((n, i) => ({ box: n.box, id: i }));
+    }
+  }
+  function coverage(boxes) {  // the share of the map under at least one box, and under two or more
+    let one = 0, two = 0, n = 0;
+    for (let x = 2; x < MAP_W; x += 4)
+      for (let y = 2; y < MAP_H; y += 4) {
+        let c = 0;
+        for (const b of boxes) if (x >= b.x0 - 2 && x <= b.x1 + 2 && y >= b.y0 - 2 && y <= b.y1 + 2) c++;
+        n++;
+        if (c >= 1) one++;
+        if (c >= 2) two++;
+      }
+    return { one: one / n, two: two / n };
+  }
+  const hilbertOrder = (pts) => pts.map((p) => [hKey(64, Math.min(63, Math.floor(p.x / (MAP_W / 64))), Math.min(63, Math.floor(p.y / (MAP_H / 64)))), p.id]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map((x) => x[1]);
+  const randomOrder = (pts) => { const r = rng32(7); const o = pts.map((p) => p.id); for (let i = o.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [o[i], o[j]] = [o[j], o[i]]; } return o; };
+  function drawMap(svg, sy) {
+    rect(svg, 0, 0, MAP_W, MAP_H, "ix-mapbg", 8);
+    void sy;
+  }
+  const flipY = (y) => MAP_H - y;  // the map's y grows upward
+  register("str-pack", (fig) => {
+    let order = "str";
+    const ui = frame(fig, { title: "Packing an R-tree", kicker: "Animation", split: true });
+    ui.stage.classList.add("is-plain");
+    const svg = svgBox(ui.stage, MAP_W, MAP_H, "ix-map");
+    const side = h("div", { class: "st-side" });
+    ui.side.appendChild(side);
+    const tools = toolbar(ui);
+    toggle(tools, "Order", [["str", "Sort-Tile-Recursive"], ["hilbert", "Hilbert curve"], ["random", "random"]], order, (v) => { order = v; player.setFrames(make()); });
+    function make() {
+      const levels = order === "str" ? strLevels(MAP_POINTS) : packLevels(MAP_POINTS, order === "hilbert" ? hilbertOrder(MAP_POINTS) : randomOrder(MAP_POINTS));
+      const fr = [{ show: 0, cap: `64 points of a small map. Leaves hold 4 points, and nodes 4 children. ${order === "str" ? "STR first sorts the points by x." : order === "hilbert" ? "The points are sorted by their Hilbert keys." : "The points come in a random order, as inserts would."}` }];
+      if (order === "str") {
+        fr.push({ show: 1, cap: "16 leaves are needed, so S = 4 vertical slices of 4 × 4 = 16 points each, in the order of x (the dashed lines)." });
+        fr.push({ show: 2, cap: "Each slice is sorted by y and cut into runs of 4 points: the 16 leaves, with small boxes that hardly overlap." });
+      } else {
+        fr.push({ show: 1, cap: order === "hilbert" ? "The order of the Hilbert keys, drawn as a path: it moves through the map without long jumps." : "The random order, drawn as a path: it jumps all over the map." });
+        fr.push({ show: 2, cap: `Runs of 4 points in this order are the 16 leaves.${order === "random" ? " Their boxes are large and cover each other: a query meets many of them." : " Neighbours on the curve are neighbours on the map, so the boxes are small."}` });
+      }
+      fr.push({ show: 3, cap: `The level above: the 16 leaf boxes are packed into 4 nodes${order === "str" ? " by STR again, by the centres of the boxes" : ", 4 leaves each, in order"}.` });
+      fr.push({ show: 4, cap: "The root holds the 4 nodes. A query starts here and visits only the children whose boxes meet it." });
+      return fr.map((f) => ({ ...f, levels }));
+    }
+    const player = new Player(fig, {
+      frames: make(), interval: 2300,
+      apply: (f) => {
+        svg.textContent = "";
+        drawMap(svg);
+        const leaves = f.levels[0].nodes, mids = f.levels.length > 2 ? f.levels[1].nodes : [];
+        if (f.show === 1 && order === "str") for (const c of f.levels[0].cuts) seg(svg, c, 4, c, MAP_H - 4, "ix-cut");
+        if (f.show === 1 && order !== "str") {
+          const o = order === "hilbert" ? hilbertOrder(MAP_POINTS) : randomOrder(MAP_POINTS);
+          s("path", { d: o.map((i, j) => `${j ? "L" : "M"}${MAP_POINTS[i].x} ${flipY(MAP_POINTS[i].y)}`).join(""), class: "ix-path" }, svg);
+        }
+        if (f.show >= 2) leaves.forEach((n, i) => rect(svg, n.box.x0 - 3, flipY(n.box.y1) - 3, n.box.x1 - n.box.x0 + 6, n.box.y1 - n.box.y0 + 6, `ix-leafbox c${i % 6}`, 3));
+        if (f.show >= 3) mids.forEach((n) => rect(svg, n.box.x0 - 7, flipY(n.box.y1) - 7, n.box.x1 - n.box.x0 + 14, n.box.y1 - n.box.y0 + 14, "ix-midbox", 5));
+        if (f.show >= 4) { const b = f.levels[f.levels.length - 1].nodes[0].box; rect(svg, b.x0 - 11, flipY(b.y1) - 11, b.x1 - b.x0 + 22, b.y1 - b.y0 + 22, "ix-rootbox", 7); }
+        for (const p of MAP_POINTS) s("circle", { cx: p.x, cy: flipY(p.y), r: 2.6, class: "ix-pt" }, svg);
+        const cov = coverage(leaves.map((n) => n.box));
+        side.textContent = "";
+        side.append(panel("the 16 leaf boxes", order === "str" ? "STR" : order === "hilbert" ? "Hilbert" : "random", h("div", { class: "st-kv" },
+          h("span", { text: "map under a leaf box" }), h("b", { text: f.show >= 2 ? `${Math.round(cov.one * 100)} %` : "–" }),
+          h("span", { text: "map under 2 or more" }), h("b", { text: f.show >= 2 ? `${Math.round(cov.two * 100)} %` : "–" }))));
+        ui.setCaption(f.cap);
+      },
+    });
+  });
+
+  /* ---------------------------------------------- range and nearest queries */
+  register("rtree-query", (fig) => {
+    let mode = "range", q = { x: 230, y: 150, w: 90, h: 70 }, qp = { x: 140, y: 150 }, K = 3;
+    const levels = strLevels(MAP_POINTS);  // leaves, the level of 4 nodes, the root
+    const leaves = levels[0].nodes, mids = levels[1].nodes, root = levels[2].nodes[0];
+    const meets = (b, r) => b.x0 <= r.x1 && r.x0 <= b.x1 && b.y0 <= r.y1 && r.y0 <= b.y1;
+    const mindist = (b, p) => Math.hypot(Math.max(b.x0 - p.x, 0, p.x - b.x1), Math.max(b.y0 - p.y, 0, p.y - b.y1));
+    function make() {
+      const fr = [];
+      if (mode === "range") {
+        const r = { x0: q.x, y0: q.y, x1: q.x + q.w, y1: q.y + q.h };
+        const st = { mids: new Map(), leaves: new Map(), found: [] };
+        const push = (cap) => fr.push({ mids: new Map(st.mids), leaves: new Map(st.leaves), found: st.found.slice(), cap, r });
+        push("A range query starts at the root, which holds the boxes of its 4 children.");
+        mids.forEach((m, i) => st.mids.set(i, meets(m.box, r) ? "on" : "off"));
+        push(`The root tests the 4 boxes of its children: ${[...st.mids.values()].filter((v) => v === "on").length} of them meet the query box (green). The others are skipped with everything below them.`);
+        mids.forEach((m, i) => {
+          if (!meets(m.box, r)) return;
+          m.kids.forEach((li) => st.leaves.set(li, meets(leaves[li].box, r) ? "on" : "off"));
+          push(`Node ${i + 1} tests its 4 leaf boxes: ${m.kids.filter((li) => meets(leaves[li].box, r)).length} meet the query.`);
+          m.kids.forEach((li) => {
+            if (!meets(leaves[li].box, r)) return;
+            const got = leaves[li].kids.filter((pi) => meets({ x0: MAP_POINTS[pi].x, y0: MAP_POINTS[pi].y, x1: MAP_POINTS[pi].x, y1: MAP_POINTS[pi].y }, r));
+            st.found.push(...got);
+            st.leaves.set(li, "read");
+            push(`A leaf tests its 4 points: ${got.length} ${got.length === 1 ? "is" : "are"} inside the box.`);
+          });
+        });
+        const read = 1 + [...st.mids.values()].filter((v) => v === "on").length + [...st.leaves.values()].filter((v) => v === "read").length;
+        push(`Done: **${st.found.length}** points found, and **${read}** of the ${1 + mids.length + leaves.length} nodes read.`);
+      } else {
+        const heap = [{ d: 0, kind: "root" }];
+        const found = [];
+        const st = { mids: new Map(), leaves: new Map() };
+        const fmtItem = (it) => `${it.kind === "point" ? `point ${it.id}` : it.kind === "leaf" ? `leaf ${it.id + 1}` : it.kind === "mid" ? `node ${it.id + 1}` : "root"}: ${it.d.toFixed(0)}`;
+        const order = (a, b) => a.d - b.d || (a.kind === "point") - (b.kind === "point") || (a.id || 0) - (b.id || 0);
+        const push = (cap, last) => fr.push({ mids: new Map(st.mids), leaves: new Map(st.leaves), found: found.slice(), cap, heap: heap.slice().sort(order).slice(0, 7).map(fmtItem), radius: last });
+        push(`The ${K} nearest points to the query point. A priority queue holds nodes and points by their distance; for a box, the distance to its nearest place (MINDIST).`, 0);
+        while (heap.length && found.length < K) {
+          heap.sort(order);
+          const it = heap.shift();
+          if (it.kind === "point") {
+            found.push(it.id);
+            push(`The nearest item is **point ${it.id}**, at ${it.d.toFixed(0)}: answer ${found.length}. Nothing in the queue is nearer, and MINDIST never overestimates.`, it.d);
+            continue;
+          }
+          if (it.kind === "root") mids.forEach((m, i) => { heap.push({ d: mindist(m.box, qp), kind: "mid", id: i }); st.mids.set(i, "off"); });
+          if (it.kind === "mid") { st.mids.set(it.id, "on"); mids[it.id].kids.forEach((li) => { heap.push({ d: mindist(leaves[li].box, qp), kind: "leaf", id: li }); st.leaves.set(li, "off"); }); }
+          if (it.kind === "leaf") { st.leaves.set(it.id, "read"); leaves[it.id].kids.forEach((pi) => heap.push({ d: Math.hypot(MAP_POINTS[pi].x - qp.x, MAP_POINTS[pi].y - qp.y), kind: "point", id: pi })); }
+          push(`The nearest item is ${fmtItem(it).split(":")[0]} (distance ${it.d.toFixed(0)}): it puts its children into the queue with their distances.`, found.length ? fr[fr.length - 1].radius : 0);
+        }
+        const read = 1 + [...st.mids.values()].filter((v) => v === "on").length + [...st.leaves.values()].filter((v) => v === "read").length;
+        push(`Done: the ${K} nearest points, after reading **${read}** of the ${1 + mids.length + leaves.length} nodes. Only nodes nearer than the last answer were read.`, fr[fr.length - 1].radius);
+      }
+      return fr;
+    }
+    const ui = frame(fig, { title: "Queries in an R-tree", kicker: "Animation", split: true });
+    ui.stage.classList.add("is-plain");
+    const svg = svgBox(ui.stage, MAP_W, MAP_H, "ix-map");
+    const side = h("div", { class: "st-side" });
+    ui.side.appendChild(side);
+    const tools = toolbar(ui);
+    toggle(tools, "Query", [["range", "range"], ["knn", "3 nearest"]], mode, (v) => { mode = v; player.setFrames(make()); });
+    slider(tools, "x", { min: 20, max: 320, step: 5, value: q.x, format: (v) => String(v) }, (v) => { q.x = v; qp.x = v + q.w / 2 - 50; player.setFrames(make(), true); });
+    const player = new Player(fig, {
+      frames: make(), interval: 1800,
+      apply: (f) => {
+        svg.textContent = "";
+        drawMap(svg);
+        leaves.forEach((n, i) => { const st = f.leaves.get(i); rect(svg, n.box.x0 - 3, flipY(n.box.y1) - 3, n.box.x1 - n.box.x0 + 6, n.box.y1 - n.box.y0 + 6, `ix-leafbox${st === "read" ? " is-read" : st === "on" ? " is-on" : st === "off" ? " is-off" : ""}`, 3); });
+        mids.forEach((n, i) => { const st = f.mids.get(i); rect(svg, n.box.x0 - 7, flipY(n.box.y1) - 7, n.box.x1 - n.box.x0 + 14, n.box.y1 - n.box.y0 + 14, `ix-midbox${st === "on" ? " is-on" : st === "off" ? " is-off" : ""}`, 5); });
+        if (f.r) rect(svg, f.r.x0, flipY(f.r.y1), f.r.x1 - f.r.x0, f.r.y1 - f.r.y0, "ix-qbox", 2);
+        for (const p of MAP_POINTS) s("circle", { cx: p.x, cy: flipY(p.y), r: f.found.includes(p.id) ? 4.5 : 2.6, class: `ix-pt${f.found.includes(p.id) ? " is-found" : ""}` }, svg);
+        if (mode === "knn") {
+          if (f.radius) s("circle", { cx: qp.x, cy: flipY(qp.y), r: f.radius, class: "ix-radius" }, svg);
+          s("circle", { cx: qp.x, cy: flipY(qp.y), r: 5, class: "ix-centre" }, svg);
+        }
+        side.textContent = "";
+        if (mode === "knn") side.append(panel("priority queue", "nearest first", h("div", { class: "ix-queue" }, ...(f.heap || []).map((t) => h("span", { text: t })))));
+        else side.append(panel("found", `${f.found.length} points`, h("div", { class: "ix-queue" }, h("span", { text: f.found.length ? f.found.slice().sort((a, b) => a - b).join(", ") : "–" }))));
+        ui.setCaption(f.cap);
+      },
+    });
+  });
+
+  /* ---------------------------------------------- the node test with SIMD */
+  register("rtree-simd", (fig) => {
+    // 6 slots in use and 2 empty ones, on a map of 400 x 220
+    const SLOTS = [[20, 30, 90, 80], [60, 120, 150, 190], [130, 40, 200, 100], [210, 130, 280, 200], [240, 30, 330, 90], [320, 110, 380, 190]];
+    let qx = 150;
+    const QW = 110, QY0 = 70, QY1 = 150;
+    const ui = frame(fig, { title: "Eight boxes in one compare", kicker: "Try it" });
+    ui.stage.classList.add("is-plain");
+    const W = 400, H = 220;
+    const svg = svgBox(ui.stage, W, H, "ix-map");
+    const box = h("div", { class: "st-swiss ix-n8" });
+    ui.stage.appendChild(box);
+    const tools = toolbar(ui);
+    slider(tools, "query x", { min: 0, max: W - QW, step: 5, value: qx, format: (v) => String(v) }, (v) => { qx = v; draw(); });
+    const fmt = (v) => (v === Infinity ? "∞" : v === -Infinity ? "−∞" : String(v));
+    function draw() {
+      const q = { x0: qx, y0: QY0, x1: qx + QW, y1: QY1 };
+      const slots = Array.from({ length: 8 }, (_, i) => (i < SLOTS.length ? { x0: SLOTS[i][0], y0: SLOTS[i][1], x1: SLOTS[i][2], y1: SLOTS[i][3] } : { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity }));
+      const rows = [
+        ["min_x ≤ q.max_x", (b) => b.x0 <= q.x1],
+        ["q.min_x ≤ max_x", (b) => q.x0 <= b.x1],
+        ["min_y ≤ q.max_y", (b) => b.y0 <= q.y1],
+        ["q.min_y ≤ max_y", (b) => q.y0 <= b.y1],
+      ];
+      const all = slots.map((b) => rows.every(([, f]) => f(b)));
+      svg.textContent = "";
+      rect(svg, 0, 0, W, H, "ix-mapbg", 8);
+      slots.forEach((b, i) => {
+        if (i >= SLOTS.length) return;
+        rect(svg, b.x0, H - b.y1, b.x1 - b.x0, b.y1 - b.y0, `ix-leafbox${all[i] ? " is-on" : " is-off"}`, 3);
+        label(svg, (b.x0 + b.x1) / 2, H - (b.y0 + b.y1) / 2, String(i), "ix-slot-lbl");
+      });
+      rect(svg, q.x0, H - q.y1, q.x1 - q.x0, q.y1 - q.y0, "ix-qbox", 2);
+      box.textContent = "";
+      box.append(cells(slots.map((_, i) => i), () => "is-index", "slot"));
+      box.append(cells(slots.map((b) => fmt(b.x0)), (i) => (i >= SLOTS.length ? "is-empty" : ""), "min_x"));
+      for (const [name, f] of rows) box.append(cells(slots.map((b) => (f(b) ? "1" : "0")), (i) => (f(slots[i]) ? "is-on" : "is-dim"), name));
+      box.append(cells(all.map((v) => (v ? "1" : "0")), (i) => (all[i] ? "is-hit" : "is-dim"), "AND"));
+      const mask = all.reduce((m, v, i) => m | ((v ? 1 : 0) << i), 0);
+      ui.setCaption(`Each row is one _mm256_cmp_ps on 8 lanes. The AND of the four rows, after _mm256_movemask_ps, is the mask **0b${mask.toString(2).padStart(8, "0")}** (slot 0 on the right): ${all.filter(Boolean).length} of the boxes meet the query. The empty slots 6 and 7 have min = +∞ and max = −∞, so the first row is 0 for them, without a test of the count.`);
+    }
+    draw();
+  });
 })();
