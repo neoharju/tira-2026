@@ -97,6 +97,7 @@ Formatting conventions (kramdown, GFM input):
 | Title for a code block | `{: .code-title }` on the line before a one-line title, directly above the code block |
 | Program output | a fence without a language (or `console`) after the code block |
 | Note box | `{: .note-title }` paragraph and `<div class="note" markdown="1">…</div>` |
+| Graded task | a note box whose title is `Task N: name (1 point)`; it starts closed, and its title opens it (`site.js`) |
 | Memory layout table | `{: .memory }` on the line before the table |
 | Table whose first row is a header | `{: .grid-head }` on the line before the table |
 
@@ -137,7 +138,10 @@ variable panels.
 * Text size: normal, large or extra large, from the `Aa` menu in the top bar.
   The reading text grows; the top bar keeps its size.
 * Zen mode (`Z` or the lotus button): hides the navigation and shows the text
-  on a calm background. `Esc` exits.
+  on a calm background. Interactive figures fold away behind a thin line with
+  an arrow, which opens them. `Esc` exits.
+* Graded tasks start closed: the arrow on the title of a task opens it, as in
+  intro-to-ai.
 * Search: `/` or `Ctrl K` / `⌘ K`.
 * Table of contents with the current section highlighted, reading progress,
   heading links and copy buttons on code blocks.

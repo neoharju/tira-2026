@@ -1048,6 +1048,48 @@ html.dark .copy-btn.is-copied { color: #86efac; }
 .prose .note > :last-child { margin-bottom: 1rem; }
 .prose .note table, .prose .note .table-wrap { background: var(--bg-elev); }
 
+/* Tasks open and close (site.js): the title is a button with an arrow. A
+   closed task is its title alone, a box with all its corners round. */
+.prose p.note-title.is-task { cursor: pointer; user-select: none; transition: background .2s; }
+.prose p.note-title.is-task:hover { background: color-mix(in srgb, var(--accent) 7%, var(--note-head)); }
+.prose p.note-title.is-task.is-closed { border-bottom: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 2rem; }
+.prose p.note-title.is-task.is-closed::after { bottom: -1px; border-radius: var(--radius) 0 0 var(--radius); }
+.prose .note.task-body[hidden] { margin: 0; padding: 0; border: 0; box-shadow: none; }
+.task-toggle {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: .6rem;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.task-name { flex: 1; min-width: 0; }
+.task-points {
+  flex: none;
+  padding: .12rem .55rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: .68rem;
+  letter-spacing: .05em;
+}
+.task-arrow { flex: none; width: 1.05rem; height: 1.05rem; color: var(--fg-faint); transform: rotate(-90deg); transition: transform .25s var(--ease), color .2s; }
+.prose p.note-title.is-closed .task-arrow { transform: rotate(90deg); }
+.prose p.note-title.is-task:hover .task-arrow { color: var(--fg); }
+/* The focus ring goes around the whole title, not only the text. */
+@supports selector(:has(*)) {
+  .task-toggle:focus-visible { outline: none; }
+  .prose p.note-title.is-task:has(.task-toggle:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+}
+
 /* ---------- Buttons & pills ---------------------------------------------- */
 .btn {
   display: inline-flex;
@@ -1503,6 +1545,28 @@ html.zen .read-progress span { box-shadow: none; }
 html.zen .page-eyebrow { justify-content: center; }
 html.zen body.is-home .hero { grid-template-columns: 1fr; text-align: left; }
 html.zen .chapters { max-width: 690px; }
+/* In zen mode an interactive figure is folded away behind a thin line with an
+   arrow (site.js); the arrow opens it. The rule hides the figures before
+   site.js runs, so they never flash. */
+.viz-fold { display: none; }
+html.zen .prose figure.viz:not(.is-open) { display: none; }
+html.zen .viz-fold {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  width: 100%;
+  margin: 1.5rem 0;
+  padding: .3rem 0;
+  border: 0;
+  background: none;
+  color: color-mix(in srgb, var(--zen-fg) 32%, transparent);
+  cursor: pointer;
+}
+html.zen .viz-fold::before, html.zen .viz-fold::after { content: ""; flex: 1; height: 1px; background: currentColor; }
+html.zen .viz-fold:hover, html.zen .viz-fold:focus-visible { color: color-mix(in srgb, var(--zen-fg) 62%, transparent); }
+html.zen .viz-fold .icon { width: 1rem; height: 1rem; transform: rotate(90deg); transition: transform .25s var(--ease); }
+html.zen .viz-fold[aria-expanded="true"] { margin-bottom: .6rem; }
+html.zen .viz-fold[aria-expanded="true"] .icon { transform: rotate(-90deg); }
 
 /* ---------- Responsive ------------------------------------------------------ */
 @media (max-width: 1279px) {
@@ -1592,4 +1656,6 @@ html:not(.js) [data-open-search], html:not(.js) [data-zen-toggle], html:not(.js)
   .prose a { color: #000; }
   .prose div.highlighter-rouge, .code-block, .table-wrap, .prose .note { box-shadow: none; break-inside: avoid; }
   .prose h2, .prose h3 { break-after: avoid; }
+  html.zen .prose figure.viz:not(.is-open) { display: block; }
+  .viz-fold, .task-arrow { display: none !important; }
 }

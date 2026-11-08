@@ -20,11 +20,13 @@
     terminal: "terminal", output: "output", copy: "Copy", copied: "Copied", copyFailed: "Failed",
     copyAria: "Copy the code to the clipboard", loading: "Loading the index…", noResults: "No results for",
     chapter: "Chapter", page: "Page", results: (n) => (n === 1 ? "1 result" : `${n} results`),
+    showFigure: "Show the figure", hideFigure: "Hide the figure",
   } : {
     readDone: "Luettu", timeLeft: (n) => `noin ${n} min jäljellä`, anchor: "Linkki tähän kohtaan",
     terminal: "terminaali", output: "tuloste", copy: "Kopioi", copied: "Kopioitu", copyFailed: "Ei onnistunut",
     copyAria: "Kopioi koodi leikepöydälle", loading: "Ladataan hakemistoa…", noResults: "Ei tuloksia haulle",
     chapter: "Luku", page: "Sivu", results: (n) => (n === 1 ? "1 tulos" : `${n} tulosta`),
+    showFigure: "Näytä kuva", hideFigure: "Piilota kuva",
   };
   const isTyping = (el) => el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
 
@@ -52,7 +54,11 @@
   let zenUiTimer = 0;
 
   function setZen(on, broadcast = true) {
+    // Zen mode folds the figures away, so keep the text that is at the top of
+    // the window in its place.
+    const anchor = on !== root.classList.contains("zen") ? readingAnchor() : null;
     root.classList.toggle("zen", on);
+    if (anchor) window.scrollBy({ top: anchor.node.getBoundingClientRect().top - anchor.top, behavior: "instant" });
     store.set("tira-zen", on ? "1" : null);
     $$("[data-zen-toggle]").forEach((b) => b.setAttribute("aria-pressed", String(on)));
     if (on) {
@@ -82,9 +88,16 @@
     if (!prose || window.scrollY < 40) return null;
     const box = prose.getBoundingClientRect();
     const bar = root.classList.contains("zen") ? 0 : $("#topbar").getBoundingClientRect().bottom;
-    let node = document.elementFromPoint(box.left + box.width / 2, bar + 12);
-    while (node && node.parentElement && node.parentElement !== prose) node = node.parentElement;
-    return node && prose.contains(node) ? { node, top: node.getBoundingClientRect().top } : null;
+    // A point in the gap between two blocks hits the prose itself: look lower.
+    for (const dy of [12, 28, 48, 72, 104, 144, 200]) {
+      let node = document.elementFromPoint(box.left + box.width / 2, bar + dy);
+      if (!node || node === prose || !prose.contains(node)) continue;
+      while (node.parentElement !== prose) node = node.parentElement;
+      // Zen mode folds the figures away: keep the text after a figure in place.
+      while (node && node.matches("figure.viz, .viz-fold")) node = node.nextElementSibling;
+      if (node) return { node, top: node.getBoundingClientRect().top };
+    }
+    return null;
   }
 
   function setSize(size, broadcast = true) {
@@ -391,6 +404,99 @@
       table.parentNode.insertBefore(wrap, table);
       wrap.appendChild(table);
     }
+  }
+
+  /* ---------------------------------------------------------------- Tasks */
+  // A graded task ("Task 3: Range scan (1 point)") is a note title and a note.
+  // The title becomes a button with an arrow that opens and closes the note,
+  // and the tasks start closed. Other notes stay open: a "Tehtävä" of Parts
+  // I–II states the problem that the text then solves, and an "Exercise" is a
+  // question that the text builds on. hidden="until-found" lets the find of
+  // the browser open a task that has the words; other browsers treat it as hidden.
+  const TASK = /^Task\s+\d+\s*:/;
+  const POINTS = /\s*\((\d+(?:\.\d+)?\s+points?)\)\s*$/;
+
+  function setTask(title, open) {
+    title.classList.toggle("is-closed", !open);
+    $(".task-toggle", title).setAttribute("aria-expanded", String(open));
+    if (open) title.nextElementSibling.removeAttribute("hidden");
+    else title.nextElementSibling.setAttribute("hidden", "until-found");
+  }
+
+  function initTasks() {
+    $$(".main .prose p.note-title").forEach((title, i) => {
+      const note = title.nextElementSibling;
+      if (!note || !note.matches("div.note") || !TASK.test(title.textContent.trim())) return;
+      if (!note.id) note.id = `task-body-${i + 1}`;
+      const name = document.createElement("span");
+      name.className = "task-name";
+      name.append(...title.childNodes);
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "task-toggle";
+      btn.setAttribute("aria-controls", note.id);
+      btn.append(name);
+      // "(1 point)" at the end of the title becomes a pill, as in intro-to-ai.
+      const last = name.lastChild;
+      const m = last && last.nodeType === 3 ? POINTS.exec(last.nodeValue) : null;
+      if (m) {
+        last.nodeValue = last.nodeValue.slice(0, m.index);
+        const pill = document.createElement("span");
+        pill.className = "task-points";
+        pill.textContent = m[1];
+        btn.append(pill);
+      }
+      btn.insertAdjacentHTML("beforeend", '<svg class="icon task-arrow" aria-hidden="true"><use href="#i-chevron"/></svg>');
+      title.append(btn);
+      title.classList.add("is-task");
+      note.classList.add("task-body");
+      // The whole title opens and closes the task; the button is for the keyboard.
+      title.addEventListener("click", () => setTask(title, title.classList.contains("is-closed")));
+      note.addEventListener("beforematch", () => setTask(title, true));
+      setTask(title, false);
+    });
+    // A link to a place in a closed task opens the task.
+    const openTarget = () => {
+      const id = decodeURIComponent(location.hash.slice(1));
+      const target = id && document.getElementById(id);
+      const note = target && target.closest(".note.task-body");
+      if (!note || !note.previousElementSibling.classList.contains("is-closed")) return;
+      setTask(note.previousElementSibling, true);
+      requestAnimationFrame(() => target.scrollIntoView());
+    };
+    openTarget();
+    window.addEventListener("hashchange", openTarget);
+    // Printed pages show every task.
+    let printed = [];
+    window.addEventListener("beforeprint", () => {
+      printed = $$(".main .prose p.note-title.is-task.is-closed");
+      printed.forEach((t) => setTask(t, true));
+    });
+    window.addEventListener("afterprint", () => { printed.forEach((t) => setTask(t, false)); printed = []; });
+  }
+
+  /* ------------------------------------------------ Figures in zen mode */
+  // Zen mode folds the interactive figures away: a thin line with an arrow
+  // takes the place of each one (CSS), and the arrow opens it. Outside zen
+  // mode the line is not shown and every figure is open.
+  function initFigureFolds() {
+    $$(".main .prose figure.viz").forEach((fig, i) => {
+      if (!fig.id) fig.id = `viz-figure-${i + 1}`;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "viz-fold";
+      btn.setAttribute("aria-controls", fig.id);
+      btn.innerHTML = '<svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg>';
+      const set = (open) => {
+        fig.classList.toggle("is-open", open);
+        btn.setAttribute("aria-expanded", String(open));
+        btn.setAttribute("aria-label", open ? T.hideFigure : T.showFigure);
+        btn.title = open ? T.hideFigure : T.showFigure;
+      };
+      btn.addEventListener("click", () => set(!fig.classList.contains("is-open")));
+      set(false);
+      fig.before(btn);
+    });
   }
 
   function renderMath() {
@@ -713,6 +819,8 @@
     enhanceHeadings();
     enhanceCode();
     wrapTables();
+    initTasks();
+    initFigureFolds();
     buildToc();
     initSearch();
     initHeroGraph();
