@@ -10,8 +10,10 @@
 FROM ruby:3.3-slim-bookworm
 
 # Compilers for the gems with native extensions (nokogiri, commonmarker, ffi, ...).
+# libssl-dev: the openssl gem (needed by jekyll-remote-theme) is compiled
+# when the image's Ruby bundles a different openssl version than Gemfile.lock.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends build-essential git \
+ && apt-get install -y --no-install-recommends build-essential git libssl-dev \
  && rm -rf /var/lib/apt/lists/*
 
 # Jekyll reads the Markdown as UTF-8 only when the locale says so; with the
