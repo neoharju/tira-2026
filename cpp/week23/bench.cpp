@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <random>
 
 #include "tasks.hpp"
 #include "tira.hpp"
@@ -34,6 +35,19 @@ Dataset first_queries(std::size_t count) {
 const Results& truth() {
     static const Results t = ground_truth(base(), first_queries(200), 10);
     return t;
+}
+
+// Makes new queries for a round of a goal: random vectors of the data with a
+// small noise of whole numbers. Thus all distances stay exact.
+Dataset fresh_queries(std::size_t count, std::uint64_t seed) {
+    std::mt19937_64 rng(seed);
+    Dataset q(count, base().dim);
+    for (std::size_t j = 0; j < count; ++j) {
+        const float* v = base()[rng() % base().n];
+        for (std::size_t i = 0; i < q.dim; ++i)
+            q.values[j * q.dim + i] = std::clamp(v[i] + static_cast<float>(static_cast<int>(rng() % 17) - 8), 0.0f, 255.0f);
+    }
+    return q;
 }
 
 bool wrong(std::string_view task, std::string_view what) {
@@ -70,40 +84,48 @@ std::vector<Neighbor> scan(const Dataset& points, const float* query, std::size_
 bool bench_distance() {
     const std::string_view task = "task1 distances";
     const Dataset data = every(base(), 100);  // 2000 vectors, 1 MB: they stay in the L2 cache
-    const Dataset q = first_queries(16);
+    Dataset q = first_queries(16);
     for (std::size_t i = 0; i < data.n; ++i)
         if (l2_squared(data[i], q[0], data.dim) != baseline::l2_squared(data[i], q[0], data.dim) ||
             inner_product(data[i], q[0], data.dim) != baseline::inner_product(data[i], q[0], data.dim))
             return wrong(task, "a distance is not the baseline's");
-    auto run = [&](auto distance) {
-        float s = 0;
+    float want = 0, got = 0;
+    auto run = [&](auto distance, float& s) {
+        s = 0;
         for (std::size_t j = 0; j < q.n; ++j)
             for (std::size_t i = 0; i < data.n; ++i) s += distance(data[i], q[j], data.dim);
-        tira::keep(s);
     };
-    auto t = tira::compare([&] { run(baseline::l2_squared); }, [&] { run(l2_squared); }, 15);
+    auto t = tira::compare_fresh([&](std::uint64_t seed) { q = fresh_queries(16, seed); }, [&] { run(baseline::l2_squared, want); },
+                                 [&] { run(l2_squared, got); }, [&] { return got == want; }, 15, 231);
     return tira::report(task, t, 5);
 }
 
 bool bench_knn() {
     const std::string_view task = "task2 brute force, top 10";
-    const Dataset q = first_queries(10);
+    Dataset q = first_queries(10);
     for (std::size_t j = 0; j < q.n; ++j)
         if (knn(base(), q[j], 10) != baseline::knn(base(), q[j], 10)) return wrong(task, "a result is not the baseline's");
-    auto t = tira::compare([&] { for (std::size_t j = 0; j < q.n; ++j) tira::keep(baseline::knn(base(), q[j], 10)); },
-                           [&] { for (std::size_t j = 0; j < q.n; ++j) tira::keep(knn(base(), q[j], 10)); }, 5);
+    Results want(q.n), got(q.n);
+    auto t = tira::compare_fresh([&](std::uint64_t seed) { q = fresh_queries(10, seed); },
+                                 [&] { for (std::size_t j = 0; j < q.n; ++j) want[j] = baseline::knn(base(), q[j], 10); },
+                                 [&] { for (std::size_t j = 0; j < q.n; ++j) got[j] = knn(base(), q[j], 10); },
+                                 [&] { return got == want; }, 5, 232);
     return tira::report(task, t, 3);
 }
 
 bool bench_kdtree() {
     const std::string_view task = "task3 k-d tree in 3 dimensions";
     // Coordinates below 1000: the squared distances are exact in a float.
-    const Dataset points = uniform_points(200000, 3, 1000, 31), q = uniform_points(1000, 3, 1000, 32);
+    const Dataset points = uniform_points(200000, 3, 1000, 31);
+    Dataset q = uniform_points(1000, 3, 1000, 32);
     const KdTree tree = build_kdtree(points, 8);
     for (std::size_t j = 0; j < 100; ++j)
         if (kdtree_knn(tree, q[j], 10) != scan(points, q[j], 10)) return wrong(task, "a result is not exact");
-    auto t = tira::compare([&] { for (std::size_t j = 0; j < q.n; ++j) tira::keep(scan(points, q[j], 10)); },
-                           [&] { for (std::size_t j = 0; j < q.n; ++j) tira::keep(kdtree_knn(tree, q[j], 10)); }, 3);
+    Results want(q.n), got(q.n);
+    auto t = tira::compare_fresh([&](std::uint64_t seed) { q = uniform_points(1000, 3, 1000, seed); },
+                                 [&] { for (std::size_t j = 0; j < q.n; ++j) want[j] = scan(points, q[j], 10); },
+                                 [&] { for (std::size_t j = 0; j < q.n; ++j) got[j] = kdtree_knn(tree, q[j], 10); },
+                                 [&] { return got == want; }, 3, 233);
     const bool ok = tira::report(task, t, 50);
     // The same in 128 dimensions, for information.
     const Dataset data = every(base(), 4);
@@ -118,7 +140,7 @@ bool bench_kdtree() {
 bool bench_kmeans() {
     const std::string_view task = "task4 k-means, 256 centroids";
     const Dataset sample = every(base(), 20);  // 10,000 vectors
-    const Dataset start = initial_centroids(sample, 256, 41);
+    Dataset start = initial_centroids(sample, 256, 41);
     auto objective = [&](const Dataset& c) {
         double total = 0;
         for (std::size_t i = 0; i < sample.n; ++i) {
@@ -130,7 +152,15 @@ bool bench_kmeans() {
     };
     const double want = objective(baseline::kmeans(sample, start, 2)), got = objective(kmeans(sample, start, 2));
     if (std::abs(got - want) > 1e-4 * want) return wrong(task, "the clustering is not as good as the baseline's");
-    auto t = tira::compare([&] { tira::keep(baseline::kmeans(sample, start, 2)); }, [&] { tira::keep(kmeans(sample, start, 2)); }, 3);
+    // Each round has new start centroids.
+    Dataset cw, cg;
+    auto t = tira::compare_fresh([&](std::uint64_t seed) { start = initial_centroids(sample, 256, seed); },
+                                 [&] { cw = baseline::kmeans(sample, start, 2); }, [&] { cg = kmeans(sample, start, 2); },
+                                 [&] {
+                                     const double w = objective(cw), g = objective(cg);
+                                     return std::abs(g - w) <= 1e-4 * w;
+                                 },
+                                 3, 234);
     return tira::report(task, t, 4);
 }
 
@@ -138,16 +168,20 @@ bool bench_ivf() {
     const std::string_view task = "task5 IVF search, nprobe 16";
     const Dataset centroids = rounded(kmeans(every(base(), 10), initial_centroids(every(base(), 10), 512, 51), 4));
     const Dataset part = every(base(), 10);
-    const Ivf small = build_ivf(part, centroids), want = baseline::build_ivf(part, centroids);
-    if (small.offset != want.offset || small.ids != want.ids || small.vectors != want.vectors)
+    const Ivf small = build_ivf(part, centroids), lists = baseline::build_ivf(part, centroids);
+    if (small.offset != lists.offset || small.ids != lists.ids || small.vectors != lists.vectors)
         return wrong(task, "the lists are not the baseline's");
     const Ivf ivf = build_ivf(base(), centroids);
-    const Dataset q = first_queries(200);
-    for (std::size_t j = 0; j < q.n; ++j)
-        if (search_ivf(ivf, q[j], 10, 16) != baseline::search_ivf(ivf, q[j], 10, 16)) return wrong(task, "a result is not the baseline's");
-    auto t = tira::compare([&] { for (std::size_t j = 0; j < q.n; ++j) tira::keep(baseline::search_ivf(ivf, q[j], 10, 16)); },
-                           [&] { for (std::size_t j = 0; j < q.n; ++j) tira::keep(search_ivf(ivf, q[j], 10, 16)); }, 5);
+    Dataset fq = first_queries(200);
+    for (std::size_t j = 0; j < fq.n; ++j)
+        if (search_ivf(ivf, fq[j], 10, 16) != baseline::search_ivf(ivf, fq[j], 10, 16)) return wrong(task, "a result is not the baseline's");
+    Results want(fq.n), got(fq.n);
+    auto t = tira::compare_fresh([&](std::uint64_t seed) { fq = fresh_queries(200, seed); },
+                                 [&] { for (std::size_t j = 0; j < fq.n; ++j) want[j] = baseline::search_ivf(ivf, fq[j], 10, 16); },
+                                 [&] { for (std::size_t j = 0; j < fq.n; ++j) got[j] = search_ivf(ivf, fq[j], 10, 16); },
+                                 [&] { return got == want; }, 5, 235);
     const bool ok = tira::report(task, t, 3);
+    const Dataset q = first_queries(200);
     // Recall and speed against brute force, for information.
     std::print("      recall@10 and speed against your knn:");
     const double brute = tira::seconds([&] { for (std::size_t j = 0; j < 20; ++j) tira::keep(knn(base(), q[j], 10)); }) / 20;
@@ -176,8 +210,16 @@ bool bench_pq() {
         if (pq_search(pq, codes, tables[j], 100) != baseline::pq_search(pq, codes, tables[j], 100))
             return wrong(task, "a result is not the baseline's");
     }
-    auto t = tira::compare([&] { for (std::size_t j = 0; j < q.n; ++j) tira::keep(baseline::pq_search(pq, codes, tables[j], 10)); },
-                           [&] { for (std::size_t j = 0; j < q.n; ++j) tira::keep(pq_search(pq, codes, tables[j], 10)); }, 5);
+    // Each round has new queries. The baseline makes their tables without a time measurement.
+    Results want(q.n), got(q.n);
+    auto t = tira::compare_fresh(
+        [&](std::uint64_t seed) {
+            const Dataset fq = fresh_queries(q.n, seed);
+            for (std::size_t j = 0; j < q.n; ++j) tables[j] = baseline::pq_table(pq, fq[j]);
+        },
+        [&] { for (std::size_t j = 0; j < q.n; ++j) want[j] = baseline::pq_search(pq, codes, tables[j], 10); },
+        [&] { for (std::size_t j = 0; j < q.n; ++j) got[j] = pq_search(pq, codes, tables[j], 10); }, [&] { return got == want; }, 5,
+        236);
     const bool ok = tira::report(task, t, 6);
     const Dataset q200 = first_queries(200);
     Results alone(q200.n), reranked(q200.n);
@@ -205,8 +247,27 @@ bool bench_fast_scan() {
         baseline::fast_scan(packed, tables[j], want);
         if (sums != want) return wrong(task, "a sum is not the baseline's");
     }
-    auto t = tira::compare([&] { for (std::size_t j = 0; j < 20; ++j) baseline::fast_scan(packed, tables[j], want), tira::keep(want[0]); },
-                           [&] { for (std::size_t j = 0; j < 20; ++j) fast_scan(packed, tables[j], sums), tira::keep(sums[0]); }, 9);
+    // Each round has new tables. The check examines each of the 20 scans at 64
+    // random places. It selects the places after the scan, without a time
+    // measurement.
+    std::vector<QuantizedTable> round(20);
+    std::vector<std::uint64_t> check_want(20), check_got(20);
+    std::mt19937_64 places(72);
+    std::vector<std::size_t> at(64);
+    auto sample = [&](const std::vector<std::uint16_t>& v) {
+        std::uint64_t h = 0;
+        for (std::size_t i : at) h = h * 0x9E3779B97F4A7C15ULL + v[i];
+        return h;
+    };
+    auto t = tira::compare_fresh(
+        [&](std::uint64_t seed) {
+            const Dataset fq = fresh_queries(20, seed);
+            for (std::size_t j = 0; j < 20; ++j) round[j] = quantize_table(baseline::pq_table(pq, fq[j]), pq.m);
+            for (std::size_t& i : at) i = places() % base().n;
+        },
+        [&] { for (std::size_t j = 0; j < 20; ++j) baseline::fast_scan(packed, round[j], want), check_want[j] = sample(want); },
+        [&] { for (std::size_t j = 0; j < 20; ++j) fast_scan(packed, round[j], sums), check_got[j] = sample(sums); },
+        [&] { return check_got == check_want && sums == want; }, 9, 237);
     const bool ok = tira::report(task, t, 6);
     // Recall: the best 100 or 1000 by the sums, re-ranked by exact distance.
     Results best100(q.n), best1000(q.n);
@@ -225,17 +286,16 @@ bool bench_fast_scan() {
 
 bool bench_batch() {
     const std::string_view task = "task8 parallel batch of queries";
-    const Dataset q = first_queries(100);
-    const Results got = knn_batch(base(), q, 10);
+    Dataset q = first_queries(100);
+    Results got = knn_batch(base(), q, 10), want(q.n);
     for (std::size_t j = 0; j < q.n; ++j)
         if (got[j] != knn(base(), q[j], 10)) return wrong(task, "a result is not the result of your knn");
-    auto t = tira::compare(
+    auto t = tira::compare_fresh(
+        [&](std::uint64_t seed) { q = fresh_queries(100, seed); },
         [&] {  // your knn for one query after another, on one thread
-            Results r(q.n);
-            for (std::size_t j = 0; j < q.n; ++j) r[j] = knn(base(), q[j], 10);
-            tira::keep(r);
+            for (std::size_t j = 0; j < q.n; ++j) want[j] = knn(base(), q[j], 10);
         },
-        [&] { tira::keep(knn_batch(base(), q, 10)); }, 5);
+        [&] { got = knn_batch(base(), q, 10); }, [&] { return got == want; }, 5, 238);
     return tira::report(task, t, 3);
 }
 

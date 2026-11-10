@@ -147,11 +147,21 @@ bool bench4() {
     reader.snapshot = 25;
     for (Key k = 0; k < 1000; ++k)
         if (store.get(reader, k) != k * 10 + 2) return wrong(task, "get gives a wrong version");
-    const auto t = tira::compare(
+    // Each round has a new snapshot (one of the three versions) and new random
+    // keys. The check compares the sum of each thread with the versions that
+    // fill made. It has no time measurement.
+    std::uint64_t round_seed = 0;
+    Ts snapshot = 35;
+    std::vector<std::size_t> sums(static_cast<std::size_t>(T));
+    const auto t = tira::compare_fresh(
+        [&](std::uint64_t seed) {
+            round_seed = seed;
+            snapshot = static_cast<Ts>(15 + 10 * (seed % 3));
+        },
         [&] {
             in_threads([&](int th) {
                 auto txn = copies.begin();
-                std::mt19937_64 rng(static_cast<std::uint64_t>(th));
+                std::mt19937_64 rng(round_seed + static_cast<std::uint64_t>(th));
                 std::size_t s = 0;
                 for (int i = 0; i < 500'000; ++i) s += copies.get(txn, rng() % keys).value_or(0);
                 tira::keep(s);
@@ -161,14 +171,24 @@ bool bench4() {
             in_threads([&](int th) {
                 Txn txn;
                 txn.id = 2000 + static_cast<TxnId>(th);
-                txn.snapshot = 35;
-                std::mt19937_64 rng(static_cast<std::uint64_t>(th));
+                txn.snapshot = snapshot;
+                std::mt19937_64 rng(round_seed + static_cast<std::uint64_t>(th));
                 std::size_t s = 0;
                 for (int i = 0; i < 500'000; ++i) s += store.get(txn, rng() % keys).value_or(0);
-                tira::keep(s);
+                sums[static_cast<std::size_t>(th)] = s;
             });
         },
-        5);
+        [&] {
+            const Value c = snapshot / 10;  // The version that the snapshot sees.
+            for (int th = 0; th < T; ++th) {
+                std::mt19937_64 rng(round_seed + static_cast<std::uint64_t>(th));
+                std::size_t want = 0;
+                for (int i = 0; i < 500'000; ++i) want += (rng() % keys) * 10 + c;
+                if (sums[static_cast<std::size_t>(th)] != want) return false;
+            }
+            return true;
+        },
+        5, 324);
     return tira::report(task, t, 5.0);
 }
 

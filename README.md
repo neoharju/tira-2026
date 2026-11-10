@@ -1,21 +1,23 @@
-# Tietorakenteet ja algoritmit,(unofficial)
+# Tietorakenteet ja algoritmit (unofficial)
 
-Adapted from the course material for *Tietorakenteet ja
-algoritmit*, published at <https://tira.mooc.fi/kevat-2026/> originally and 
-created by Antti Laaksonen <https://github.com/pllk>.
+This file is written in ASD-STE100 Simplified Technical English (Issue 9).
 
-This is a private fork, modified with permission from Antti Laaksonen and 
-is not intended for commercial use.
+This site uses the course material of *Tietorakenteet ja algoritmit*. The
+original material is at <https://tira.mooc.fi/kevat-2026/>. Antti Laaksonen
+<https://github.com/pllk> wrote it.
 
-The algorithms course is continued with parts III, VI, V, and will switch to
-using C++ as the main language and also have a focus on performance optimizations.
+This repository is a private fork. Antti Laaksonen gave permission for the
+changes. The fork is not for commercial use.
 
-Served at <https://neoharju.github.io/tira-2026>
+Parts III, IV and V continue the algorithms course. They use C++ as the main
+language, and they teach performance optimization. `PLAN.md` gives the plan.
 
-The site is built with Jekyll through the `github-pages` gem, so it builds the
-same way on GitHub Pages and locally. It has no custom plugins and loads
-nothing from third-party servers (fonts, KaTeX and all scripts are in
-`assets/`).
+The site is at <https://neoharju.github.io/tira-2026>.
+
+Jekyll builds the site with the `github-pages` gem. Thus the build is the same
+on GitHub Pages and on your computer. The site has no custom plugins. It loads
+nothing from third-party servers: the fonts, KaTeX and all scripts are in
+`assets/`.
 
 ## Local preview
 
@@ -25,14 +27,14 @@ nothing from third-party servers (fonts, KaTeX and all scripts are in
 docker compose up
 ```
 
-Open <http://localhost:4000/tira-2026/>. Edits to the Markdown, layouts and
-assets are rebuilt automatically and the browser reloads itself. On Windows,
-or anywhere file changes are not picked up, use the `--force_polling` command
-in `docker-compose.yml`.
+Open <http://localhost:4000/tira-2026/>. When you change the Markdown, the
+layouts or the assets, Jekyll builds the site again, and the browser loads the
+page again. On Windows, or if Jekyll does not see the changes, use the
+`--force_polling` command in `docker-compose.yml`.
 
 ### With Ruby
 
-Ruby 3.3 and Bundler:
+You must have Ruby 3.3 and Bundler:
 
 ```bash
 bundle install
@@ -42,26 +44,29 @@ bundle install
 LC_ALL=C.UTF-8 bundle exec jekyll serve --livereload
 ```
 
-The UTF-8 locale is required: without it Jekyll fails on the first non-ASCII
-character of the Markdown.
+The UTF-8 locale is necessary. Without it, Jekyll stops at the first
+character that is not ASCII.
 
-## Publishing
+## Publication
 
-The site works with the classic GitHub Pages build ("Deploy from a branch"),
-as before. `.github/workflows/pages.yml` builds the site on every push and pull
-request with the same gem versions and checks the output, so a broken build
-is caught before it is published. To publish from the workflow instead of the
-classic build, set *Settings → Pages → Source* to *GitHub Actions* and add the
-repository variable `DEPLOY_WITH_ACTIONS` with the value `true`.
+The site works with the classic build of GitHub Pages ("Deploy from a
+branch"). `.github/workflows/pages.yml` builds the site for each push and each
+pull request, with the same gem versions, and it does a check of the output.
+Thus a build that does not work stops before publication.
 
-`baseurl` in `_config.yml` is `/tira-2026`. For a site served from the root
-of a domain, set it to `""`.
+To publish from the workflow, not from the classic build, do these steps:
 
-## Writing material
+1. Set *Settings → Pages → Source* to *GitHub Actions*.
+2. Add the repository variable `DEPLOY_WITH_ACTIONS` with the value `true`.
 
-Chapters live in `_material_1` (part I) and `_material_2` (part II). The
-front matter of a chapter lists its sections; they appear in the navigation
-and in the search:
+`baseurl` in `_config.yml` is `/tira-2026`. If the site is at the root of a
+domain, set `baseurl` to `""`.
+
+## How to write material
+
+The chapters of Part I are in `_material_1`, and the chapters of Part II are
+in `_material_2`. The front matter of a chapter lists its sections. The
+navigation and the search show them:
 
 ```yaml
 ---
@@ -73,96 +78,126 @@ sections:
 ---
 ```
 
-Other pages are Markdown files in the root directory. Pages with `hide: true`
-are not listed in the navigation.
+The other pages are Markdown files in the root directory. The navigation does
+not show pages with `hide: true`.
 
-Parts I–II are in Finnish and Parts III–V (`_material_3`–`_material_5`) in
-English. The language of a page is `lang` in its front matter, set for each
-part under `defaults` in `_config.yml`; it selects the interface strings
-(`_data/ui.yml`, and the tables at the top of `assets/js/site.js` and
-`assets/js/viz-core.js`). A chapter's icon on the front page is
-`#c-<slug>` from `_includes/icons.html`; for a new chapter, set `glyph:` to
-one of the existing icons (for example `glyph: osa14`).
+Parts I–II are in Finnish. Parts III–V (`_material_3`–`_material_5`) are in
+English. The `lang` value in the front matter gives the language of a page.
+`_config.yml` sets `lang` for each part under `defaults`. The language selects
+the interface strings: `_data/ui.yml`, and the tables at the top of
+`assets/js/site.js` and `assets/js/viz-core.js`.
 
-Parts III–V are planned in `PLAN.md`: topics, tasks, tools and
-infrastructure for weeks 17–40. Their tasks are C++ code in `cpp/` (starting
-code, tests and benchmarks; see `cpp/README.md`), which is not part of the
-website.
+The icon of a chapter on the front page is `#c-<slug>` from
+`_includes/icons.html`. For a new chapter, set `glyph:` to one of the icons
+that exist, for example `glyph: osa14`.
 
-Formatting conventions (kramdown, GFM input):
+`PLAN.md` gives the plan of Parts III–VI: the topics, the tasks, the tools and
+the infrastructure. The tasks of Parts III–V are C++ code in `cpp/`: starting
+code, tests and benchmarks (see `cpp/README.md`). The `cpp/` folder is not a
+part of the website.
 
-| What | How |
+These are the format conventions (kramdown, GFM input):
+
+| Item | Format |
 | --- | --- |
-| Math | `$$...$$` inline and as a paragraph of its own (rendered with KaTeX) |
-| Title for a code block | `{: .code-title }` on the line before a one-line title, directly above the code block |
-| Program output | a fence without a language (or `console`) after the code block |
-| Note box | `{: .note-title }` paragraph and `<div class="note" markdown="1">…</div>` |
-| Graded task | a note box whose title is `Task N: name (1 point)`; it starts closed, and its title opens it (`site.js`) |
-| Memory layout table | `{: .memory }` on the line before the table |
-| Table whose first row is a header | `{: .grid-head }` on the line before the table |
-| Table whose cells may wrap, so that it fits a narrow page (by default a table is as wide as its longest lines and scrolls) | `{: .fit }` on the line before the table |
+| Mathematics | `$$...$$` in a line, and as a paragraph alone (KaTeX shows it) |
+| Title of a code block | `{: .code-title }` on the line before a title of one line, immediately above the code block |
+| Output of a program | a fence without a language (or `console`) after the code block |
+| Note box | a `{: .note-title }` paragraph and `<div class="note" markdown="1">…</div>` |
+| Task with points | a note box with the title `Task N: name (1 point)`. The box is closed at the start, and its title opens it (`site.js`). |
+| Table of a memory layout | `{: .memory }` on the line before the table |
+| Table with a header in the first row | `{: .grid-head }` on the line before the table |
+| Table with cells that can wrap, so that it fits a narrow page | `{: .fit }` on the line before the table. (Without it, a table is as wide as its longest lines, and it scrolls.) |
 
 ### Interactive figures
 
-Figures are included with
+To add a figure, use:
 
 ```liquid
 {% include viz.html id="graph-bfs" alt="Description for screen readers." %}
 {% include viz.html id="bst" mode="search" alt="…" fallback="img/bhp_2.png" %}
 ```
 
-* `id` selects the figure and `mode` a variant of it. Every figure is
-  registered in `assets/js/viz-*.js` with `register("id", …)`; the modes are
-  handled at the start of each registration.
-* `alt` is required: it is the text alternative of the figure.
-* `fallback` is an image shown when JavaScript is disabled.
+* `id` selects the figure. `mode` selects a variant of it. Each figure
+  registers itself in `assets/js/viz-*.js` with `register("id", …)`. The start
+  of each registration does the modes.
+* `alt` is necessary. It is the text alternative of the figure.
+* `fallback` is an image. The page shows it when JavaScript is off.
 
-A page with figures loads `assets/js/viz-core.js` and the figure scripts named
-in its `viz` front matter, which `_config.yml` sets for each part: `graphs`,
-`trees` and `arrays` for Parts I–II, `hardware`, `paths`, `speedups`, `web` and `vector`
-(English captions) for Part III, and `storage`, `indexes` (chapters 29–30) and `engines` (chapters 31–32) for Part IV. Code panels highlight Python, or C++ when the
-panel's title is `c++`.
+A page with figures loads `assets/js/viz-core.js` and only the figure scripts
+of its figures. `_data/assets.yml` gives the script of each figure. It also
+gives a short hash of each script and each stylesheet. `head.html` puts the
+hash in the URL of the asset. Thus a URL changes only when its file changes,
+and browsers keep the other files in their cache.
 
-The figures replay the course's own code (same edge order, same loops), so the
-states they show match the outputs printed in the material. When an example in
-the text changes, update the matching figure as well.
+When you change a file in `assets/js` or `assets/css`, or when you add a
+figure, do these steps:
 
-`assets/js/viz-core.js` contains the shared parts: an SVG scene with animated
-transitions, the step player (←/→, space, Home/End), and the code, output and
-variable panels.
+1. Run this command:
 
-## Reading features
+   ```bash
+   python3 _scripts/asset-data.py
+   ```
 
-* Light and dark theme (follows the system setting until chosen), with the
-  colours of the [intro-to-ai](https://github.com/neoharju/intro-to-ai) site:
-  slate greys and one blue accent.
+2. Commit `_data/assets.yml`. If the file is not up to date, the Pages
+   workflow fails.
+
+If a figure is not in `_data/assets.yml`, the page loads all the figure
+scripts of its part. The `viz` front matter in `_config.yml` names these
+scripts:
+
+* Parts I–II: `graphs`, `trees` and `arrays`;
+* Part III: `hardware`, `paths`, `speedups`, `web` and `vector` (English
+  captions);
+* Part IV: `storage`, `indexes` and `engines`.
+
+The code panels show Python with colours. If the title of a panel is `c++`,
+they show C++.
+
+The figures replay the code of the course, with the same edge sequence and
+the same loops. Thus the states that they show agree with the outputs in the
+material. When an example in the text changes, change its figure too.
+
+`assets/js/viz-core.js` has the shared parts: an SVG scene with animated
+transitions, the step player (←/→, space, Home/End), and the panels for the
+code, the output and the variables.
+
+## Features for the reader
+
+* A light theme and a dark theme. The theme follows the system setting until
+  the reader selects one. The colours are those of the
+  [intro-to-ai](https://github.com/neoharju/intro-to-ai) site: slate greys and
+  one blue accent colour.
 * Text size: normal, large or extra large, from the `Aa` menu in the top bar.
-  The reading text grows; the top bar keeps its size.
-* Zen mode (`Z` or the lotus button): hides the navigation and shows the text
-  on a calm background. Interactive figures fold away behind a thin line with
-  an arrow, which opens them. `Esc` exits.
-* Graded tasks start closed: the arrow on the title of a task opens it, as in
-  intro-to-ai.
+  The text of the page becomes larger. The top bar keeps its size.
+* Zen mode (`Z` or the lotus button). It hides the navigation and shows the
+  text on a calm background. The interactive figures fold behind a thin line
+  with an arrow. The arrow opens a figure. `Esc` stops zen mode.
+* Tasks with points are closed at the start. The arrow on the title of a task
+  opens it, as in intro-to-ai.
 * Search: `/` or `Ctrl K` / `⌘ K`.
-* Table of contents with the current section highlighted, reading progress,
-  heading links and copy buttons on code blocks.
+* A table of contents that shows the current section, a bar that shows how
+  much of the page you read, links on the headings, and copy buttons on the
+  code blocks.
 
 ## Structure
 
 | Path | Contents |
 | --- | --- |
-| `_layouts/` | `base` (page frame), `default` (chapter/page), `home`, `collection` (all chapters of a part on one page), `404` |
+| `_layouts/` | `base` (the frame of a page), `default` (a chapter or a page), `home`, `collection` (all chapters of a part on one page), `404` |
 | `_includes/` | top bar, navigation, page header, pager, footer, search dialog, icon sprite, `viz.html` |
-| `assets/css/main.css` | theme: colours, typography, layout, code, tables, zen mode, print |
-| `assets/css/viz.css` | interactive figures |
-| `assets/js/boot.js` | sets theme and zen mode before the first paint |
-| `assets/js/site.js` | navigation, table of contents, search, code blocks, KaTeX rendering |
-| `zz-search.json` | search index (`/search.json`); named so that it is rendered after the pages |
+| `_scripts/asset-data.py` | makes `_data/assets.yml`: the script of each figure, and the hashes of the assets |
+| `assets/css/main.css` | the theme: colours, typography, layout, code, tables, zen mode, print |
+| `assets/css/viz.css` | the interactive figures |
+| `assets/js/boot.js` | sets the theme and zen mode before the browser shows the page |
+| `assets/js/site.js` | navigation, table of contents, search, code blocks, KaTeX |
+| `zz-search.json` | the search index (`/search.json`). Its name makes Jekyll build it after the pages. |
 
-In production builds (`JEKYLL_ENV=production`, as on GitHub Pages) every page
-has a Content Security Policy that only allows resources from the site itself.
+In production builds (`JEKYLL_ENV=production`, as on GitHub Pages), each page
+has a Content Security Policy. The policy allows only resources from the site.
 
-Corrections made to the content in 2026 are listed in `CORRECTIONS.md`.
+`CORRECTIONS.md` lists the corrections to the content in 2026.
 
-Licences of bundled third-party files: Geist fonts (SIL Open Font License,
-`assets/fonts/OFL-Geist.txt`), KaTeX (MIT, `assets/katex/LICENSE`).
+These are the licences of the third-party files in the repository: the Geist
+fonts (SIL Open Font License, `assets/fonts/OFL-Geist.txt`) and KaTeX (MIT,
+`assets/katex/LICENSE`).

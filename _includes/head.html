@@ -2,7 +2,30 @@
 {%- if content contains '\(' or content contains '\[' -%}{%- assign has_math = true -%}{%- endif -%}
 {%- assign has_viz = false -%}
 {%- if content contains 'data-viz=' -%}{%- assign has_viz = true -%}{%- endif -%}
+{%- comment -%}
+The version of each asset is a short hash of the file from _data/assets.yml
+(_scripts/asset-data.py makes it). Thus a URL changes only when its file
+changes. If the file has no hash, the version is the build time.
+{%- endcomment -%}
 {%- assign v = site.time | date: '%s' -%}
+{%- assign hash = site.data.assets.hash -%}
+{%- comment -%}
+Find the figure modules of the figures of this page. _data/assets.yml gives
+the module of each figure. If a figure is not in that file, the page loads all
+the modules of its part (`viz` in _config.yml), as before.
+{%- endcomment -%}
+{%- assign viz_modules = "" | split: "" -%}
+{%- if has_viz -%}
+  {%- assign unknown = false -%}
+  {%- assign parts = content | split: 'data-viz="' -%}
+  {%- for part in parts offset: 1 -%}
+    {%- assign id = part | split: '"' | first -%}
+    {%- assign module = site.data.assets.viz[id] -%}
+    {%- if module -%}{%- assign viz_modules = viz_modules | push: module -%}{%- else -%}{%- assign unknown = true -%}{%- endif -%}
+  {%- endfor -%}
+  {%- assign viz_modules = viz_modules | uniq -%}
+  {%- if unknown or viz_modules.size == 0 -%}{%- assign viz_modules = page.viz -%}{%- endif -%}
+{%- endif -%}
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 {%- if jekyll.environment == "production" %}
@@ -20,20 +43,21 @@
 <link rel="canonical" href="{{ page.url | absolute_url }}">
 <link rel="icon" href="{{ '/assets/img/favicon.svg' | relative_url }}" type="image/svg+xml">
 <link rel="preload" href="{{ '/assets/fonts/geist-latin-wght-normal.woff2' | relative_url }}" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="{{ '/assets/css/main.css' | relative_url }}?v={{ v }}">
+<link rel="stylesheet" href="{{ '/assets/css/main.css' | relative_url }}?v={{ hash['/assets/css/main.css'] | default: v }}">
 {%- if has_math %}
 <link rel="stylesheet" href="{{ '/assets/katex/katex.min.css' | relative_url }}">
 {%- endif %}
-<script src="{{ '/assets/js/boot.js' | relative_url }}?v={{ v }}"></script>
-<script defer src="{{ '/assets/js/site.js' | relative_url }}?v={{ v }}"></script>
+<script src="{{ '/assets/js/boot.js' | relative_url }}?v={{ hash['/assets/js/boot.js'] | default: v }}"></script>
+<script defer src="{{ '/assets/js/site.js' | relative_url }}?v={{ hash['/assets/js/site.js'] | default: v }}"></script>
 {%- if has_math %}
 <script defer src="{{ '/assets/katex/katex.min.js' | relative_url }}"></script>
 <script defer src="{{ '/assets/katex/contrib/auto-render.min.js' | relative_url }}"></script>
 {%- endif %}
 {%- if has_viz %}
-<link rel="stylesheet" href="{{ '/assets/css/viz.css' | relative_url }}?v={{ v }}">
-<script defer src="{{ '/assets/js/viz-core.js' | relative_url }}?v={{ v }}"></script>
-{%- for module in page.viz %}
-<script defer src="{{ '/assets/js/viz-' | append: module | append: '.js' | relative_url }}?v={{ v }}"></script>
+<link rel="stylesheet" href="{{ '/assets/css/viz.css' | relative_url }}?v={{ hash['/assets/css/viz.css'] | default: v }}">
+<script defer src="{{ '/assets/js/viz-core.js' | relative_url }}?v={{ hash['/assets/js/viz-core.js'] | default: v }}"></script>
+{%- for module in viz_modules %}
+{%- assign path = '/assets/js/viz-' | append: module | append: '.js' %}
+<script defer src="{{ path | relative_url }}?v={{ hash[path] | default: v }}"></script>
 {%- endfor %}
 {%- endif %}

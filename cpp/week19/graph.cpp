@@ -5,6 +5,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <numbers>
 #include <numeric>
 #include <print>
@@ -73,7 +74,7 @@ void dimacs_lines(const std::string& path, char want, F&& line) {
             line(x);
         }
         while (p < end && *p != '\n') ++p;
-        ++p;
+        if (p < end) ++p;  // Do not go past the end. That pointer is undefined behaviour.
     }
 }
 
@@ -159,6 +160,12 @@ RoadMap benchmark_map() {
         std::vector<Edge> edges;
         Node nodes = 0;
         dimacs_lines(gr, 'a', [&](long long* x) {  // a <from> <to> <weight>, nodes from 1
+            // The file is input. Node numbers must be 1 ... 2^31 - 1, and
+            // weights must be below 2^31. (The landmark rows keep differences
+            // in int32_t.)
+            constexpr long long limit = std::numeric_limits<std::int32_t>::max();
+            if (x[0] < 1 || x[0] > limit || x[1] < 1 || x[1] > limit || x[2] < 0 || x[2] > limit)
+                throw std::runtime_error(gr + ": a node number or a weight out of range");
             edges.push_back({static_cast<Node>(x[0] - 1), static_cast<Node>(x[1] - 1), static_cast<std::uint32_t>(x[2])});
             nodes = std::max({nodes, edges.back().from + 1, edges.back().to + 1});
         });

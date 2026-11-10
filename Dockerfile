@@ -2,7 +2,7 @@
 # plugin versions that GitHub Pages uses (the github-pages gem pins them).
 #
 #   docker compose up
-#   open http://localhost:4000/kevat-2026/
+#   open http://localhost:4000/tira-2026/
 #
 # Without Compose:
 #   docker build -t tira-site .

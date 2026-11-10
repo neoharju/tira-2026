@@ -27,13 +27,14 @@ const std::vector<Item>& million() {
     static const auto items = random_items(1'000'000, 291);
     return items;
 }
+std::vector<Key> make_lookups(std::uint64_t seed) {
+    std::mt19937_64 rng(seed);
+    std::vector<Key> k;
+    for (std::size_t i = 0; i < 2'000'000; ++i) k.push_back(i % 2 ? rng() : million()[rng() % million().size()].key);
+    return k;
+}
 const std::vector<Key>& lookups() {
-    static const auto keys = [] {
-        std::mt19937_64 rng(292);
-        std::vector<Key> k;
-        for (std::size_t i = 0; i < 2'000'000; ++i) k.push_back(i % 2 ? rng() : million()[rng() % million().size()].key);
-        return k;
-    }();
+    static const auto keys = make_lookups(292);
     return keys;
 }
 
@@ -44,14 +45,15 @@ std::map<Key, Value> to_map(const std::vector<Item>& items) {
 }
 
 template <class Map>
-std::uint64_t find_all(const Map& m) {
+std::uint64_t find_all(const Map& m, const std::vector<Key>& keys = lookups()) {
     std::uint64_t s = 0;
-    for (Key k : lookups()) {
+    for (Key k : keys) {
         if constexpr (requires { m.find(k)->second; }) {  // std::map, std::unordered_map
             const auto it = m.find(k);
-            if (it != m.end()) s += it->second;
-        } else if (const auto v = m.find(k)) {
-            s += *v;
+            s = s * 31 + (it != m.end() ? it->second : 1);
+        } else {
+            const auto v = m.find(k);
+            s = s * 31 + (v ? *v : 1);
         }
     }
     return s;
@@ -62,7 +64,10 @@ bool bench1() {
     const auto t = bulk_build<ScalarSearch>(sorted(million()));
     const std::map<Key, Value> m = to_map(million());
     if (find_all(t) != find_all(m)) return wrong(task, "find gives other results than std::map");
-    const auto r = tira::compare([&] { tira::keep(find_all(m)); }, [&] { tira::keep(find_all(t)); }, 5);
+    std::vector<Key> keys;  // Each round has new lookups.
+    std::uint64_t want = 0, got = 0;
+    const auto r = tira::compare_fresh([&](std::uint64_t seed) { keys = make_lookups(seed); }, [&] { want = find_all(m, keys); },
+                                       [&] { got = find_all(t, keys); }, [&] { return got == want; }, 5, 291);
     const bool ok = tira::report(task, r, 4.0);
     std::unordered_map<Key, Value> h;
     for (const Item& x : million()) h.emplace(x.key, x.value);
@@ -73,23 +78,36 @@ bool bench1() {
 
 bool bench2() {
     const std::string_view task = "task2 insert, 1M random keys";
-    auto art_insert = [] {
+    auto art_insert = [](const std::vector<Item>& items) {
         Art<ScalarSearch> t;
-        for (const Item& x : million()) t.insert(x.key, x.value);
+        for (const Item& x : items) t.insert(x.key, x.value);
         return t;
     };
     {
-        const auto t = art_insert();
+        const auto t = art_insert(million());
         if (t.size() != million().size() || shape(t.root) != shape(bulk_build<ScalarSearch>(sorted(million())).root))
             return wrong(task, "the tree is not the tree of bulk_build");
     }
-    const auto r = tira::compare(
-        [] {
-            std::map<Key, Value> m;
-            for (const Item& x : million()) m.insert_or_assign(x.key, x.value);
-            tira::keep(m.size());
+    // Each round has new keys. The trees are released before the next round, without a time measurement.
+    std::vector<Item> items;
+    std::map<Key, Value> m;
+    Art<ScalarSearch> got;
+    const auto r = tira::compare_fresh(
+        [&](std::uint64_t seed) {
+            m = {}, got = {};
+            items = random_items(1'000'000, seed);
         },
-        [&] { tira::keep(art_insert().size()); }, 3);
+        [&] {
+            for (const Item& x : items) m.insert_or_assign(x.key, x.value);
+        },
+        [&] { got = art_insert(items); },
+        [&] {
+            if (got.size() != m.size()) return false;
+            for (std::size_t i = 0; i < items.size(); i += 101)
+                if (got.find(items[i].key) != m.at(items[i].key)) return false;
+            return true;
+        },
+        3, 292);
     return tira::report(task, r, 1.8);
 }
 
@@ -134,11 +152,17 @@ bool bench3() {
 
 // Searches in 4096 Node16s (640 KB, in the L2 cache), 4 million of them.
 struct Node16Data {
-    std::vector<Node16> nodes = random_node16s(4096, 294);
-    std::vector<Query16> queries = random_queries16(nodes, 4'000'000, 295);
+    std::vector<Node16> nodes;
+    std::vector<Query16> queries;
 };
+Node16Data make_node16_data(std::uint64_t seed) {
+    Node16Data d;
+    d.nodes = random_node16s(4096, seed);
+    d.queries = random_queries16(d.nodes, 4'000'000, seed + 1);
+    return d;
+}
 const Node16Data& node16_data() {
-    static const Node16Data d;
+    static const Node16Data d = make_node16_data(294);
     return d;
 }
 
@@ -146,7 +170,11 @@ bool bench4() {
     const std::string_view task = "task4 find16, 4 million searches";
     const auto& d = node16_data();
     if (sum_find16<SimdSearch>(d.nodes, d.queries) != sum_find16<ScalarSearch>(d.nodes, d.queries)) return wrong(task, "find16_sse gives other results");
-    const auto r = tira::compare([&] { tira::keep(sum_find16<ScalarSearch>(d.nodes, d.queries)); }, [&] { tira::keep(sum_find16<SimdSearch>(d.nodes, d.queries)); }, 7);
+    Node16Data n;  // Each round has new nodes and searches.
+    std::uint64_t want = 0, got = 0;
+    const auto r = tira::compare_fresh([&](std::uint64_t seed) { n = make_node16_data(seed); },
+                                       [&] { want = sum_find16<ScalarSearch>(n.nodes, n.queries); },
+                                       [&] { got = sum_find16<SimdSearch>(n.nodes, n.queries); }, [&] { return got == want; }, 7, 294);
     const bool ok = tira::report(task, r, 4.0);
     const auto scalar = bulk_build<ScalarSearch>(sorted(million()));
     const auto simd = bulk_build<SimdSearch>(sorted(million()));
@@ -161,7 +189,11 @@ bool bench5() {
     const std::string_view task = "task5 lower16, 4 million searches";
     const auto& d = node16_data();
     if (sum_lower16<SimdSearch>(d.nodes, d.queries) != sum_lower16<ScalarSearch>(d.nodes, d.queries)) return wrong(task, "lower16_sse gives other results");
-    const auto r = tira::compare([&] { tira::keep(sum_lower16<ScalarSearch>(d.nodes, d.queries)); }, [&] { tira::keep(sum_lower16<SimdSearch>(d.nodes, d.queries)); }, 7);
+    Node16Data n;  // Each round has new nodes and searches.
+    std::uint64_t want = 0, got = 0;
+    const auto r = tira::compare_fresh([&](std::uint64_t seed) { n = make_node16_data(seed); },
+                                       [&] { want = sum_lower16<ScalarSearch>(n.nodes, n.queries); },
+                                       [&] { got = sum_lower16<SimdSearch>(n.nodes, n.queries); }, [&] { return got == want; }, 7, 295);
     const bool ok = tira::report(task, r, 4.0);
     auto build = [](auto search) {
         Art<decltype(search)> t;
@@ -186,53 +218,47 @@ bool bench6() {
         routes = bgp_like_table(1'000'000, 296);
         std::println("table: bgp_like_table(1000000, 296) (download a real table with tools/download_bgp.sh)");
     }
-    const auto addresses = lookup_addresses(routes, 4'000'000, 297);
+    auto addresses = lookup_addresses(routes, 4'000'000, 297);
     const BinaryTrie trie(routes);
     const Lpm lpm(routes);
     for (std::size_t i = 0; i < addresses.size(); i += 7)
         if (lpm.lookup(addresses[i]) != trie.lookup(addresses[i])) return wrong(task, "a lookup gives another hop than the binary trie");
     auto all = [&](const auto& t) {
         std::uint64_t s = 0;
-        for (std::uint32_t a : addresses) s += t.lookup(a);
+        for (std::uint32_t a : addresses) s = s * 31 + t.lookup(a);  // The sum depends on each hop.
         return s;
     };
-    const auto r = tira::compare([&] { tira::keep(all(trie)); }, [&] { tira::keep(all(lpm)); }, 5);
+    std::uint64_t want = 0, got = 0;  // Each round has new addresses.
+    const auto r = tira::compare_fresh([&](std::uint64_t seed) { addresses = lookup_addresses(routes, 4'000'000, seed); },
+                                       [&] { want = all(trie); }, [&] { got = all(lpm); }, [&] { return got == want; }, 5, 296);
     const bool ok = tira::report(task, r, 12.0);
     std::println("      memory: binary trie {:.1f} MB, yours {:.1f} MB", static_cast<double>(trie.bytes()) / 1e6, static_cast<double>(lpm.bytes()) / 1e6);
     return ok;
 }
 
-// Times builds without the time to free the trees.
-template <class B, class Y>
-tira::Timing compare_builds(B&& base, Y&& yours, int rounds) {
-    auto once = [](auto&& build) {
-        Art<SimdSearch> t;
-        const double s = tira::seconds([&] { t = build(); });
-        return s;  // t is freed here, after the time was taken
-    };
-    once(base);
-    once(yours);
-    std::vector<double> tb, ty;
-    for (int i = 0; i < rounds; ++i) {
-        tb.push_back(once(base));
-        ty.push_back(once(yours));
-    }
-    std::ranges::sort(tb);
-    std::ranges::sort(ty);
-    return {tb[tb.size() / 2], ty[ty.size() / 2]};
-}
-
-bool bench_build(std::string_view task, const std::vector<Item>& items, double goal) {
+// Measures builds with new keys in each round. `make` makes the keys. The
+// measurement does not include the time to make the keys or to release the
+// trees.
+template <class M>
+bool bench_build(std::string_view task, M make, double goal, std::uint64_t salt) {
+    std::vector<Item> items = make(4'000'000, salt);
     {
         const std::vector<Item> part(items.begin(), items.begin() + static_cast<std::ptrdiff_t>(items.size() / 10));
         if (shape(build_parallel<SimdSearch>(part).root) != shape(baseline::build<SimdSearch>(part).root)) return wrong(task, "the tree is not the tree of baseline::build");
     }
-    const auto r = compare_builds([&] { return baseline::build<SimdSearch>(items); }, [&] { return build_parallel<SimdSearch>(items); }, 5);
+    Art<SimdSearch> want, got;
+    const auto r = tira::compare_fresh(
+        [&](std::uint64_t seed) {
+            want = {}, got = {};
+            items = make(4'000'000, seed);
+        },
+        [&] { want = baseline::build<SimdSearch>(items); }, [&] { got = build_parallel<SimdSearch>(items); },
+        [&] { return shape(got.root) == shape(want.root); }, 5, salt);
     return tira::report(task, r, goal);
 }
 
-bool bench7() { return bench_build("task7 parallel build, random keys", random_items(4'000'000, 298), 2.0); }
-bool bench8() { return bench_build("task8 parallel build, skewed keys", skewed_items(4'000'000, 299), 2.0); }
+bool bench7() { return bench_build("task7 parallel build, random keys", random_items, 2.0, 298); }
+bool bench8() { return bench_build("task8 parallel build, skewed keys", skewed_items, 2.0, 299); }
 
 }  // namespace
 

@@ -3,6 +3,8 @@
 #include <omp.h>
 
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
 #include <limits>
 #include <queue>
 #include <random>
@@ -212,4 +214,28 @@ TEST_CASE("task8: versioned workspace") {
     auto want = baseline::distances(g, queries);
     for (std::size_t i = 0; i < queries.size(); ++i)
         CHECK(query(g, queries[i].source, queries[i].target, mine, heap) == want[i]);
+}
+
+// The loader of the DIMACS files (given code). A file is input. A bad file
+// must give an exception, not a memory error. Run this test in the debug
+// preset. There, AddressSanitizer finds a read or a write outside the arrays.
+TEST_CASE("loader: read_dimacs checks its input") {
+    const auto path = (std::filesystem::temp_directory_path() / "w18_loader_test.gr").string();
+    auto load = [&](const std::string& text) {
+        std::ofstream(path, std::ios::binary) << text;
+        return read_dimacs(path);
+    };
+    const EdgeList g = load("c ok\np sp 3 2\na 1 2 7\na 3 1 9");  // No newline at the end.
+    CHECK(g.nodes == 3);
+    CHECK(g.edges == std::vector<Edge>{{0, 1, 7}, {2, 0, 9}});
+    CHECK_THROWS(load("p sp 3 1\na 5 1 7\n"));                 // Node 5 in a graph of 3 nodes.
+    CHECK_THROWS(load("p sp 3 1\na 0 1 7\n"));                 // The node numbers start at 1.
+    CHECK_THROWS(load("p sp 3 1\na 1 2 4294967296\n"));        // A weight above 2^32 - 1.
+    CHECK_THROWS(load("a 1 2 7\np sp 3 1\n"));                 // An arc before the p line.
+    CHECK_THROWS(load("c no p line\n"));
+    CHECK_THROWS(load("p sp 0 0\n"));
+    CHECK_THROWS(load("p sp 4294967295 1\n"));                 // INF is not a node.
+    CHECK_THROWS(load("p sp 3 1\na 1 x 7\n"));
+    CHECK(load("p sp 3 99999999999999\na 1 2 7\n").edges.size() == 1);  // A very large count does not cause a large allocation.
+    std::filesystem::remove(path);
 }

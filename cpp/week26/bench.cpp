@@ -57,19 +57,23 @@ bool wrong(std::string_view task, std::string_view what) {
     return false;
 }
 
-// Times only `work`, after `setup`, in turns; the medians, as tira::compare.
-template <class S1, class W1, class S2, class W2>
-tira::Timing compare_after_setup(S1 setup_a, W1 work_a, S2 setup_b, W2 work_b, int rounds) {
-    std::vector<double> a, b;
-    for (int r = 0; r < rounds; ++r) {
-        auto x = setup_a();
-        a.push_back(tira::seconds([&] { work_a(x); }));
-        auto y = setup_b();
-        b.push_back(tira::seconds([&] { work_b(y); }));
+// The input of one round of a goal: new keys in a new random order, in a
+// std::map and in a bulk-loaded tree.
+struct Round {
+    Pairs pairs;
+    std::vector<Key> shuffled;
+    std::map<Key, Value> model;
+    BPlusTree tree;
+};
+void new_round(Round& r, std::uint64_t seed, bool with_maps = true) {
+    r = {};
+    r.pairs = random_pairs(1'000'000, seed);
+    for (const auto& [key, value] : r.pairs) r.shuffled.push_back(key);
+    std::ranges::shuffle(r.shuffled, std::mt19937_64(seed + 1));
+    if (with_maps) {
+        r.model = std::map<Key, Value>(r.pairs.begin(), r.pairs.end());
+        r.tree = bulk_load(r.pairs);
     }
-    std::ranges::sort(a);
-    std::ranges::sort(b);
-    return {a[a.size() / 2], b[b.size() / 2]};
 }
 
 double tree_find_seconds(const BPlusTree& t) {
@@ -85,18 +89,19 @@ bool bench_find() {
     for (std::size_t i = 0; i < 20000; ++i)
         if (loaded().find(shuffled()[i]) != model().at(shuffled()[i]) || loaded().find(shuffled()[i] + 1).has_value() != model().contains(shuffled()[i] + 1))
             return wrong(task, "a result is not the result of std::map");
-    auto t = tira::compare(
-        [] {
-            Value s = 0;
-            for (Key k : shuffled()) s ^= model().find(k)->second;
-            tira::keep(s);
+    Round r;
+    std::vector<Value> want, got;
+    auto t = tira::compare_fresh(
+        [&](std::uint64_t seed) { new_round(r, seed); },
+        [&] {
+            want.clear();
+            for (Key k : r.shuffled) want.push_back(r.model.find(k)->second);
         },
-        [] {
-            Value s = 0;
-            for (Key k : shuffled()) s ^= *loaded().find(k);
-            tira::keep(s);
+        [&] {
+            got.clear();
+            for (Key k : r.shuffled) got.push_back(*r.tree.find(k));
         },
-        7);
+        [&] { return got == want; }, 7, 261);
     return tira::report(task, t, 3);
 }
 
@@ -114,18 +119,27 @@ bool bench_insert() {
         for (std::size_t i = 0; i < 20000; ++i)
             if (t.find(shuffled()[i]) != (shuffled()[i] ^ 0x5555)) return wrong(task, "a key was lost");
     }
-    auto t = tira::compare(
-        [] {
-            std::map<Key, Value> m;
-            for (Key k : shuffled()) m.insert_or_assign(k, k ^ 0x5555);
-            tira::keep(m.size());
+    Round r;
+    std::map<Key, Value> m;
+    BPlusTree tree;
+    auto t = tira::compare_fresh(
+        [&](std::uint64_t seed) {
+            new_round(r, seed, false);
+            m = {}, tree = {};
         },
-        [] {
-            BPlusTree tree;
-            for (Key k : shuffled()) tree.insert(k, k ^ 0x5555);
-            tira::keep(tree.size());
+        [&] {
+            for (Key k : r.shuffled) m.insert_or_assign(k, k ^ 0x5555);
         },
-        5);
+        [&] {
+            for (Key k : r.shuffled) tree.insert(k, k ^ 0x5555);
+        },
+        [&] {
+            if (tree.size() != m.size()) return false;
+            for (std::size_t i = 0; i < r.shuffled.size(); i += 101)
+                if (tree.find(r.shuffled[i]) != (r.shuffled[i] ^ 0x5555)) return false;
+            return true;
+        },
+        5, 262);
     return tira::report(task, t, 1.7);
 }
 
@@ -143,22 +157,33 @@ bool bench_scan() {
         for (auto it = model().lower_bound(lows[i]); it != model().end() && it->first <= lows[i] + span; ++it) want.push_back(*it);
         if (got != want) return wrong(task, "a scan is not the scan of std::map");
     }
-    auto t = tira::compare(
+    // Each round has new ranges. The benchmark keeps and compares the results
+    // of 1000 scans. It selects them at random, without a time measurement.
+    std::vector<std::uint8_t> keep(lows.size());
+    Pairs kept_want, kept_got;
+    auto t = tira::compare_fresh(
+        [&](std::uint64_t seed) {
+            std::mt19937_64 g(seed);
+            for (Key& k : lows) k = g() % (~Key{0} - span);
+            std::ranges::fill(keep, 0);
+            for (int i = 0; i < 1000; ++i) keep[g() % keep.size()] = 1;
+            kept_want.clear(), kept_got.clear();
+        },
         [&] {
-            for (Key lo : lows) {
+            for (std::size_t i = 0; i < lows.size(); ++i) {
                 want.clear();
-                for (auto it = model().lower_bound(lo); it != model().end() && it->first <= lo + span; ++it) want.push_back(*it);
+                for (auto it = model().lower_bound(lows[i]); it != model().end() && it->first <= lows[i] + span; ++it) want.push_back(*it);
+                if (keep[i]) kept_want.insert(kept_want.end(), want.begin(), want.end());
             }
-            tira::keep(want.size());
         },
         [&] {
-            for (Key lo : lows) {
+            for (std::size_t i = 0; i < lows.size(); ++i) {
                 got.clear();
-                loaded().scan(lo, lo + span, got);
+                loaded().scan(lows[i], lows[i] + span, got);
+                if (keep[i]) kept_got.insert(kept_got.end(), got.begin(), got.end());
             }
-            tira::keep(got.size());
         },
-        5);
+        [&] { return kept_got == kept_want; }, 5, 263);
     return tira::report(task, t, 3);
 }
 
@@ -175,17 +200,19 @@ bool bench_erase() {
         }
         if (t.size() != 0) return wrong(task, "the tree is not empty");
     }
-    auto t = compare_after_setup([] { return model(); },
-                                 [](std::map<Key, Value>& m) {
-                                     for (Key k : shuffled()) m.erase(k);
-                                     tira::keep(m.size());
-                                 },
-                                 [] { return loaded(); },
-                                 [](BPlusTree& b) {
-                                     for (Key k : shuffled()) b.erase(k);
-                                     tira::keep(b.size());
-                                 },
-                                 5);
+    Round r;
+    std::size_t erased_m = 0, erased_t = 0;
+    auto t = tira::compare_fresh(
+        [&](std::uint64_t seed) { new_round(r, seed); },
+        [&] {
+            erased_m = 0;
+            for (Key k : r.shuffled) erased_m += r.model.erase(k);
+        },
+        [&] {
+            erased_t = 0;
+            for (Key k : r.shuffled) erased_t += r.tree.erase(k);
+        },
+        [&] { return erased_t == erased_m && r.tree.size() == 0; }, 5, 264);
     return tira::report(task, t, 2);
 }
 
@@ -194,18 +221,19 @@ struct Nodes {
     std::vector<Key> keys;
     std::vector<std::pair<std::uint32_t, Key>> queries;
 };
+Nodes make_nodes(std::uint64_t seed) {
+    Nodes s;
+    std::mt19937_64 rng(seed);
+    s.keys.resize(4096 * 64);
+    for (std::size_t i = 0; i < 4096; ++i) {
+        for (std::size_t j = 0; j < 64; ++j) s.keys[i * 64 + j] = rng();
+        std::sort(s.keys.begin() + static_cast<std::ptrdiff_t>(i * 64), s.keys.begin() + static_cast<std::ptrdiff_t>(i * 64 + 64));
+    }
+    for (int q = 0; q < 1'000'000; ++q) s.queries.emplace_back(static_cast<std::uint32_t>(rng() % 4096), rng());
+    return s;
+}
 const Nodes& nodes() {
-    static const Nodes n = [] {
-        Nodes s;
-        std::mt19937_64 rng(29);
-        s.keys.resize(4096 * 64);
-        for (std::size_t i = 0; i < 4096; ++i) {
-            for (std::size_t j = 0; j < 64; ++j) s.keys[i * 64 + j] = rng();
-            std::sort(s.keys.begin() + static_cast<std::ptrdiff_t>(i * 64), s.keys.begin() + static_cast<std::ptrdiff_t>(i * 64 + 64));
-        }
-        for (int q = 0; q < 1'000'000; ++q) s.queries.emplace_back(static_cast<std::uint32_t>(rng() % 4096), rng());
-        return s;
-    }();
+    static const Nodes n = make_nodes(29);
     return n;
 }
 
@@ -215,6 +243,20 @@ auto node_searches(NodeSearch f) {
         for (const auto& [node, x] : nodes().queries) s += f(nodes().keys.data() + node * 64, 64, x);
         tira::keep(s);
     };
+}
+
+// Measures a goal: the baseline node search against `f`, with new nodes and
+// queries in each round. The answers go into a checksum that depends on all
+// of them.
+tira::Timing compare_node_searches(NodeSearch f, std::uint64_t salt) {
+    Nodes n;
+    std::size_t want = 0, got = 0;
+    auto run = [&](NodeSearch g, std::size_t& s) {
+        s = 0;
+        for (const auto& [node, x] : n.queries) s = s * 31 + g(n.keys.data() + node * 64, 64, x);
+    };
+    return tira::compare_fresh([&](std::uint64_t seed) { n = make_nodes(seed); }, [&] { run(baseline::node_lower_bound, want); },
+                               [&] { run(f, got); }, [&] { return got == want; }, 9, salt);
 }
 
 bool kernel_correct(NodeSearch f) {
@@ -250,7 +292,7 @@ void tree_with(NodeSearch f, std::string_view name) {
 bool bench_avx2() {
     const std::string_view task = "task6 node search, AVX2";
     if (!kernel_correct(node_lower_bound_avx2)) return wrong(task, "a result is not the result of the baseline");
-    auto t = tira::compare(node_searches(baseline::node_lower_bound), node_searches(node_lower_bound_avx2), 9);
+    auto t = compare_node_searches(node_lower_bound_avx2, 266);
     const bool ok = tira::report(task, t, 2.2);
     tree_with(node_lower_bound_avx2, "the AVX2");
     return ok;
@@ -263,7 +305,7 @@ bool bench_avx512() {
         return false;
     }
     if (!kernel_correct(node_lower_bound_avx512)) return wrong(task, "a result is not the result of the baseline");
-    auto t = tira::compare(node_searches(baseline::node_lower_bound), node_searches(node_lower_bound_avx512), 9);
+    auto t = compare_node_searches(node_lower_bound_avx512, 267);
     const bool ok = tira::report(task, t, 2.6);
     auto v = tira::compare(node_searches(node_lower_bound_avx2), node_searches(node_lower_bound_avx512), 9);
     std::println("      compared with your AVX2 node search: {:.2f}x (no goal)", v.speedup());
@@ -273,17 +315,24 @@ bool bench_avx512() {
 
 bool bench_bulk() {
     const std::string_view task = "task8 parallel bulk load, 16M";
-    const Pairs big = random_pairs(16'000'000, 30);
-    {
-        const BPlusTree a = bulk_load(big), b = bulk_load_parallel(big);
-        bool same = a.root == b.root && a.height == b.height && a.size() == b.size() && a.leaves.size() == b.leaves.size() &&
+    Pairs big = random_pairs(16'000'000, 30);
+    auto same = [](const BPlusTree& a, const BPlusTree& b) {
+        bool equal = a.root == b.root && a.height == b.height && a.size() == b.size() && a.leaves.size() == b.leaves.size() &&
                     a.inners.size() == b.inners.size();
-        for (std::size_t p = 0; same && p < a.leaves.size(); p += 97)
-            same = a.leaves[p].count == b.leaves[p].count && a.leaves[p].next == b.leaves[p].next &&
-                   std::equal(a.leaves[p].keys, a.leaves[p].keys + a.leaves[p].count, b.leaves[p].keys);
-        if (!same) return wrong(task, "the tree is not the tree of bulk_load");
-    }
-    auto t = tira::compare([&] { tira::keep(bulk_load(big).size()); }, [&] { tira::keep(bulk_load_parallel(big).size()); }, 5);
+        for (std::size_t p = 0; equal && p < a.leaves.size(); p += 97)
+            equal = a.leaves[p].count == b.leaves[p].count && a.leaves[p].next == b.leaves[p].next &&
+                    std::equal(a.leaves[p].keys, a.leaves[p].keys + a.leaves[p].count, b.leaves[p].keys);
+        return equal;
+    };
+    if (!same(bulk_load(big), bulk_load_parallel(big))) return wrong(task, "the tree is not the tree of bulk_load");
+    // Each round has new keys. The step that makes them has no time measurement.
+    BPlusTree want, got;
+    auto t = tira::compare_fresh(
+        [&](std::uint64_t seed) {
+            want = {}, got = {};
+            big = random_pairs(16'000'000, seed);
+        },
+        [&] { want = bulk_load(big); }, [&] { got = bulk_load_parallel(big); }, [&] { return same(got, want); }, 5, 268);
     return tira::report(task, t, 1.8);
 }
 

@@ -5,6 +5,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <numeric>
 #include <print>
 #include <random>
@@ -132,6 +133,7 @@ Graph read_snap(const std::string& path) {
     for (auto [a, b] : pairs) ids.push_back(a), ids.push_back(b);
     std::ranges::sort(ids);
     ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+    if (ids.size() >= std::numeric_limits<Node>::max()) throw std::runtime_error("too many pages in " + path);
     auto number = [&](std::uint64_t x) { return static_cast<Node>(std::ranges::lower_bound(ids, x) - ids.begin()); };
     std::vector<Edge> edges;
     edges.reserve(pairs.size());

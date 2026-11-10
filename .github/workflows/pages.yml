@@ -43,6 +43,9 @@ jobs:
           ruby-version: "3.3"
           bundler-cache: true
 
+      - name: The asset hashes and figure modules are up to date
+        run: python3 _scripts/asset-data.py --check
+
       - name: Build
         run: bundle exec jekyll build --strict_front_matter
 

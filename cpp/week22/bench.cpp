@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numeric>
+#include <random>
 
 #include "tasks.hpp"
 #include "tira.hpp"
@@ -57,6 +58,18 @@ double pull_step_contrib(const Graph& in, std::span<const std::uint32_t> out_deg
     return change;
 }
 
+// Returns true if the estimate and the residual of forward push add up to 1,
+// and if each residual is below its limit.
+bool adds_up(const Graph& g, const LocalRank& r, double epsilon) {
+    double sum = 0;
+    for (double v : r.estimate.value) sum += v;
+    for (double v : r.residual.value) sum += v;
+    bool small = r.residual.node.size() == r.residual.value.size();
+    for (std::size_t i = 0; small && i < r.residual.node.size(); ++i)
+        small = r.residual.value[i] < epsilon * std::max<std::uint32_t>(1, g.degree(r.residual.node[i]));
+    return near(sum, 1.0, 1e-9) && small && r.estimate.node.size() == r.estimate.value.size();
+}
+
 bool bench_personalized() {
     const std::string_view task = "task4 personalized PageRank";
     const Graph& g = graph();
@@ -64,20 +77,24 @@ bool bench_personalized() {
     std::vector<Node> seeds;  // pages with links, spread over the graph
     for (Node u = g.nodes() / 7; seeds.size() < 2; u = (u + g.nodes() / 3) % g.nodes())
         if (g.degree(u) > 0) seeds.push_back(u);
-    for (Node seed : seeds) {
-        const LocalRank r = personalized(g, seed, d, epsilon);
-        double sum = 0;
-        for (double v : r.estimate.value) sum += v;
-        for (double v : r.residual.value) sum += v;
-        bool small = r.residual.node.size() == r.residual.value.size();
-        for (std::size_t i = 0; small && i < r.residual.node.size(); ++i)
-            small = r.residual.value[i] < epsilon * std::max<std::uint32_t>(1, g.degree(r.residual.node[i]));
-        if (!near(sum, 1.0, 1e-9) || !small || r.estimate.node.size() != r.estimate.value.size())
-            return wrong(task, "the estimate and the residual do not add up");
-    }
-    // Power iteration until the change is below 1e-6, against forward push with epsilon 1e-6.
-    auto t = tira::compare([&] { for (Node s : seeds) tira::keep(baseline::personalized(g, s, d, 1e-6)); },
-                           [&] { for (Node s : seeds) tira::keep(personalized(g, s, d, epsilon)); }, 3);
+    for (Node seed : seeds)
+        if (!adds_up(g, personalized(g, seed, d, epsilon), epsilon)) return wrong(task, "the estimate and the residual do not add up");
+    // Power iteration until the change is below 1e-6, against forward push
+    // with epsilon 1e-6. Each round starts from two new random pages with links.
+    std::vector<LocalRank> got;
+    auto t = tira::compare_fresh(
+        [&](std::uint64_t seed) {
+            std::mt19937_64 rng(seed);
+            seeds.clear();
+            while (seeds.size() < 2)
+                if (Node u = static_cast<Node>(rng() % g.nodes()); g.degree(u) > 0) seeds.push_back(u);
+        },
+        [&] { for (Node s : seeds) tira::keep(baseline::personalized(g, s, d, 1e-6)); },
+        [&] {
+            got.clear();
+            for (Node s : seeds) got.push_back(personalized(g, s, d, epsilon));
+        },
+        [&] { return std::ranges::all_of(got, [&](const LocalRank& r) { return adds_up(g, r, epsilon); }); }, 3, 224);
     return tira::report(task, t, 30.0);
 }
 
@@ -96,8 +113,21 @@ bool bench_update() {
     if (!near(got.change, want.change, 1e-12) || !near(got.dangling, want.dangling, 1e-12) || !near(y, want_y, 1e-14) ||
         !near(c, want_c, 1e-14))
         return wrong(task, "the result is not the baseline's");
-    auto t = tira::compare([&] { tira::keep(baseline::update_ranks(sum, x, inv, 1.7e-7, 0.85, y, c)); },
-                           [&] { tira::keep(update_ranks(sum, x, inv, 1.7e-7, 0.85, y, c)); }, 25);
+    // Each round has new sums and ranks.
+    Update w{}, g{};
+    auto t = tira::compare_fresh(
+        [&](std::uint64_t seed) {
+            std::mt19937_64 rng(seed);
+            std::uniform_real_distribution<double> small(0.0, 1e-6);
+            for (Node v = 0; v < n; ++v) sum[v] = small(rng), x[v] = small(rng);
+        },
+        [&] { w = baseline::update_ranks(sum, x, inv, 1.7e-7, 0.85, want_y, want_c); },
+        [&] { g = update_ranks(sum, x, inv, 1.7e-7, 0.85, y, c); },
+        [&] {
+            return near(g.change, w.change, 1e-12) && near(g.dangling, w.dangling, 1e-12) && near(y, want_y, 1e-14) &&
+                   near(c, want_c, 1e-14);
+        },
+        25, 225);
     return tira::report(task, t, 1.5);
 }
 
@@ -107,19 +137,27 @@ bool bench_parallel() {
     static const Graph g = relabel(graph(), in_degree_order(graph()));
     static const Graph in = transpose(g);
     static const auto degree = out_degrees(g);
-    const auto x = uniform(g.nodes());
+    auto x = uniform(g.nodes());
     std::vector<double> y(g.nodes()), want(g.nodes());
     const double change = baseline::pull_step(in, degree, x, want, 0.85);
     if (!near(pull_step_parallel(in, degree, x, y, 0.85), change, 1e-9) || !near(y, want, 1e-12))
         return wrong(task, "the result is not the baseline's");
     const int all = omp_get_max_threads();
-    auto t = tira::compare(
+    // Each round has new random ranks. Their sum is 1.
+    double c1 = 0, c2 = 0;
+    auto t = tira::compare_fresh(
+        [&](std::uint64_t seed) {
+            std::mt19937_64 rng(seed);
+            std::uniform_real_distribution<double> u(0.5, 1.5);
+            for (double& v : x) v = u(rng) / g.nodes();
+        },
         [&] {  // your pull_step_parallel on one thread
             omp_set_num_threads(1);
-            tira::keep(pull_step_parallel(in, degree, x, y, 0.85));
+            c1 = pull_step_parallel(in, degree, x, want, 0.85);
             omp_set_num_threads(all);
         },
-        [&] { tira::keep(pull_step_parallel(in, degree, x, y, 0.85)); }, 15);
+        [&] { c2 = pull_step_parallel(in, degree, x, y, 0.85); }, [&] { return near(c2, c1, 1e-9) && near(y, want, 1e-12); }, 15,
+        227);
     return tira::report(task, t, 2.7);
 }
 

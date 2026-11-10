@@ -319,6 +319,7 @@ body.is-home .read-progress { display: none; }
   min-width: 0;
   padding: 2.25rem var(--gutter) 0;
   outline: none;
+  overflow-x: clip; /* The glow of the hero goes past the column. Unlike hidden, clip makes no scroll container. */
 }
 .main > .prose, .main > .page-eyebrow, .main > .pager, .main > .site-footer, .main > .not-found {
   max-width: var(--content-w);

@@ -21,12 +21,14 @@
     copyAria: "Copy the code to the clipboard", loading: "Loading the index…", noResults: "No results for",
     chapter: "Chapter", page: "Page", results: (n) => (n === 1 ? "1 result" : `${n} results`),
     showFigure: "Show the figure", hideFigure: "Hide the figure",
+    menuOpen: "Open menu", menuClose: "Close menu",
   } : {
     readDone: "Luettu", timeLeft: (n) => `noin ${n} min jäljellä`, anchor: "Linkki tähän kohtaan",
     terminal: "terminaali", output: "tuloste", copy: "Kopioi", copied: "Kopioitu", copyFailed: "Ei onnistunut",
     copyAria: "Kopioi koodi leikepöydälle", loading: "Ladataan hakemistoa…", noResults: "Ei tuloksia haulle",
     chapter: "Luku", page: "Sivu", results: (n) => (n === 1 ? "1 tulos" : `${n} tulosta`),
     showFigure: "Näytä kuva", hideFigure: "Piilota kuva",
+    menuOpen: "Avaa valikko", menuClose: "Sulje valikko",
   };
   const isTyping = (el) => el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
 
@@ -151,6 +153,18 @@
     };
   }
 
+  /* ------------------------------------------------------------- Sidebar */
+  // On a wide screen, the sidebar is a scroll area. Show the current chapter
+  // in it, and do not move the page.
+  function revealCurrentChapter() {
+    const inner = $(".sidebar-inner");
+    const current = $(".sidebar .nav-chapter.is-current");
+    if (!inner || !current || inner.scrollHeight <= inner.clientHeight) return;
+    const top = current.getBoundingClientRect().top - inner.getBoundingClientRect().top + inner.scrollTop;
+    if (top < inner.scrollTop || top > inner.scrollTop + inner.clientHeight - current.offsetHeight)
+      inner.scrollTop = Math.max(0, top - inner.clientHeight / 3);
+  }
+
   /* -------------------------------------------------------- Mobile drawer */
   function openNav() {
     root.classList.add("nav-open");
@@ -158,7 +172,7 @@
     if (scrim) scrim.hidden = false;
     $$("[data-nav-toggle]").forEach((b) => {
       b.setAttribute("aria-expanded", "true");
-      b.setAttribute("aria-label", "Sulje valikko");
+      b.setAttribute("aria-label", T.menuClose);
     });
     const current = $(".sidebar .is-current") || $(".sidebar a");
     if (current) {
@@ -172,7 +186,7 @@
     root.classList.remove("nav-open");
     $$("[data-nav-toggle]").forEach((b) => {
       b.setAttribute("aria-expanded", "false");
-      b.setAttribute("aria-label", "Avaa valikko");
+      b.setAttribute("aria-label", T.menuOpen);
     });
     const scrim = $("[data-nav-close]");
     if (scrim) setTimeout(() => { if (!root.classList.contains("nav-open")) scrim.hidden = true; }, 300);
@@ -814,6 +828,7 @@
     $$(".sidebar a").forEach((a) => a.addEventListener("click", () => closeNav()));
     $$("[data-open-search]").forEach((b) => b.addEventListener("click", openSearch));
     initSizeMenu();
+    revealCurrentChapter();
 
     renderMath();
     enhanceHeadings();

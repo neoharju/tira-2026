@@ -40,6 +40,18 @@ bool same(const Hierarchy& a, const Hierarchy& b) {
            a.down.target.size() == b.down.target.size();
 }
 
+// Makes a new grid of the same size as small_grid, and its node order, for
+// each round of the contraction benchmarks.
+struct Contraction {
+    Graph g;
+    std::vector<Node> order;
+};
+Contraction new_contraction(std::uint64_t seed) {
+    Contraction c{road_grid(160, 160, seed), {}};
+    c.order = baseline::node_order(c.g);
+    return c;
+}
+
 bool wrong(std::string_view task, std::string_view what) {
     std::println("{:<32} WRONG: {} (run the tests)", task, what);
     return false;
@@ -49,8 +61,11 @@ bool bench_contract() {
     const std::string_view task = "task3 contraction";
     if (!same(contract(small_grid(), small_order()), baseline::contract(small_grid(), small_order())))
         return wrong(task, "your hierarchy is not the baseline's");
-    auto t = tira::compare([] { tira::keep(baseline::contract(small_grid(), small_order())); },
-                           [] { tira::keep(contract(small_grid(), small_order())); }, 3);
+    Contraction c;
+    Hierarchy want, got;
+    auto t = tira::compare_fresh([&](std::uint64_t seed) { c = new_contraction(seed); },
+                                 [&] { want = baseline::contract(c.g, c.order); }, [&] { got = contract(c.g, c.order); },
+                                 [&] { return same(got, want); }, 3, 203);
     return tira::report(task, t, 1.8);
 }
 
@@ -62,21 +77,37 @@ bool bench_query() {
     for (auto x : queries)
         if (q.distance(x.source, x.target) != baseline::dijkstra(g, x.source, x.target))
             return wrong("task4 CH query vs Dijkstra", "a distance is not the same as with Dijkstra");
-    auto t = tira::compare([&] { for (auto x : queries) tira::keep(baseline::dijkstra(g, x.source, x.target)); },
-                           [&] { for (auto x : queries) tira::keep(q.distance(x.source, x.target)); }, 5);
+    std::vector<Dist> want, got;
+    auto t = tira::compare_fresh(
+        [&](std::uint64_t seed) { queries = random_queries(g.nodes(), 200, seed); },
+        [&] {
+            want.clear();
+            for (auto x : queries) want.push_back(baseline::dijkstra(g, x.source, x.target));
+        },
+        [&] {
+            got.clear();
+            for (auto x : queries) got.push_back(q.distance(x.source, x.target));
+        },
+        [&] { return got == want; }, 5, 204);
     return tira::report("task4 CH query vs Dijkstra", t, 10.0);
 }
 
 bool bench_table() {
     const Hierarchy& h = large_hierarchy();
-    auto random = random_queries(large_grid().nodes(), 256, 44);
-    std::vector<Node> sources, targets;
-    for (auto x : random) sources.push_back(x.source), targets.push_back(x.target);
-    static const TableInput in = table_input(h, sources, targets);
+    // Each round has new sources and targets. table_input does their searches
+    // without a time measurement. The benchmark measures the min-plus rows.
+    auto make = [&](std::uint64_t seed) {
+        std::vector<Node> sources, targets;
+        for (auto x : random_queries(large_grid().nodes(), 256, seed)) sources.push_back(x.source), targets.push_back(x.target);
+        return table_input(h, sources, targets);
+    };
+    TableInput in = make(44);
     if (distance_table(in, min_plus_row) != distance_table(in, baseline::min_plus_row))
         return wrong("task6 256 x 256 distance table", "the table is not the baseline's");
-    auto t = tira::compare([&] { tira::keep(distance_table(in, baseline::min_plus_row)); },
-                           [&] { tira::keep(distance_table(in, min_plus_row)); });
+    std::vector<Dist> want, got;
+    auto t = tira::compare_fresh([&](std::uint64_t seed) { in = make(seed); },
+                                 [&] { want = distance_table(in, baseline::min_plus_row); },
+                                 [&] { got = distance_table(in, min_plus_row); }, [&] { return got == want; }, 9, 206);
     return tira::report("task6 256 x 256 distance table", t, 3.0);
 }
 
@@ -84,13 +115,16 @@ bool bench_parallel() {
     if (!same(contract_parallel(small_grid(), small_order()), baseline::contract_parallel(small_grid(), small_order())))
         return wrong("task8 parallel contraction", "your hierarchy is not the baseline's");
     int all = omp_get_max_threads();
-    auto t = tira::compare(
+    Contraction c;
+    Hierarchy want, got;
+    auto t = tira::compare_fresh(
+        [&](std::uint64_t seed) { c = new_contraction(seed); },
         [&] {  // your contract_parallel on one thread
             omp_set_num_threads(1);
-            tira::keep(contract_parallel(small_grid(), small_order()));
+            want = contract_parallel(c.g, c.order);
             omp_set_num_threads(all);
         },
-        [&] { tira::keep(contract_parallel(small_grid(), small_order())); }, 3);
+        [&] { got = contract_parallel(c.g, c.order); }, [&] { return same(got, want); }, 3, 208);
     return tira::report("task8 parallel contraction", t, 1.3);
 }
 

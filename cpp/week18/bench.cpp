@@ -36,8 +36,12 @@ bool wrong(std::string_view task, std::string_view what) {
 bool bench_csr() {
     const EdgeList& el = edge_list();
     if (build_csr(el.nodes, el.edges) != graph()) return wrong("task1 build_csr", "the graph is not the baseline's");
-    auto t = tira::compare([&] { tira::keep(baseline::build_csr(el.nodes, el.edges)); },
-                           [&] { tira::keep(build_csr(el.nodes, el.edges)); });
+    // Each round lists the arcs in a new order. Thus the CSR arrays are new too.
+    std::vector<Edge> edges = el.edges;
+    Graph want, got;
+    auto t = tira::compare_fresh([&](std::uint64_t seed) { std::ranges::shuffle(edges, std::mt19937_64(seed)); },
+                                 [&] { want = baseline::build_csr(el.nodes, edges); },
+                                 [&] { got = build_csr(el.nodes, edges); }, [&] { return got == want; }, 9, 181);
     return tira::report("task1 build_csr", t, 2.0);
 }
 
@@ -58,15 +62,19 @@ auto run_with() {
 // chapter), so that speedup is printed without a goal. Returns a checksum of
 // the popped keys: the keys are all different, so it is the same for every
 // correct heap.
+constexpr std::size_t big_n = std::size_t{1} << 20;
+
+// Makes the random parts of the keys of one run of big_heap.
+std::vector<std::uint32_t> big_heap_input(std::uint64_t seed) {
+    std::mt19937_64 rng(seed);
+    std::vector<std::uint32_t> v(2 * big_n);
+    for (auto& x : v) x = static_cast<std::uint32_t>(rng() % 4096);
+    return v;
+}
+
 template <class Heap>
-std::uint64_t big_heap() {
-    constexpr std::size_t n = std::size_t{1} << 20;
-    static const std::vector<std::uint32_t> r = [] {
-        std::mt19937_64 rng(15);
-        std::vector<std::uint32_t> v(2 * n);
-        for (auto& x : v) x = static_cast<std::uint32_t>(rng() % 4096);
-        return v;
-    }();
+std::uint64_t big_heap(const std::vector<std::uint32_t>& r) {
+    constexpr std::size_t n = big_n;
     static Heap heap;
     heap.clear();
     for (std::size_t i = 0; i < n; ++i) heap.push(make_key(r[i], static_cast<Node>(i)));
@@ -84,10 +92,10 @@ std::uint64_t big_heap() {
 template <class Heap>
 bool bench_heap(std::string_view task, double goal) {
     std::uint64_t want = 0, got = 0;
-    auto t = tira::compare([&] { want = big_heap<StdHeap>(); }, [&] { got = big_heap<Heap>(); }, 9);
-    if (got != want) {
-        return wrong(task, "the keys come out in a wrong order");
-    }
+    std::vector<std::uint32_t> r = big_heap_input(15);
+    if (big_heap<Heap>(r) != big_heap<StdHeap>(r)) return wrong(task, "the keys come out in a wrong order");
+    auto t = tira::compare_fresh([&](std::uint64_t seed) { r = big_heap_input(seed); }, [&] { want = big_heap<StdHeap>(r); },
+                                 [&] { got = big_heap<Heap>(r); }, [&] { return got == want; }, 9, 184);
     bool ok = tira::report(task, t, goal);
     auto d = tira::compare(run_with<StdHeap>(), run_with<Heap>(), 7);
     std::println("      in Dijkstra: {:.2f}x (no goal)", d.speedup());
@@ -103,7 +111,8 @@ bool bench_heap8_avx512() {
     }
     bool ok = bench_heap<Heap8<MinChildAvx512>>("task5 big heap, AVX-512 Heap8", 1.5);
     std::uint64_t a = 0, b = 0;
-    auto vs4 = tira::compare([&] { a = big_heap<Heap4>(); }, [&] { b = big_heap<Heap8<MinChildAvx512>>(); }, 5);
+    const std::vector<std::uint32_t> r = big_heap_input(15);
+    auto vs4 = tira::compare([&] { a = big_heap<Heap4>(r); }, [&] { b = big_heap<Heap8<MinChildAvx512>>(r); }, 5);
     if (a == b) std::println("      big heap compared with your Heap4: {:.2f}x (no goal)", vs4.speedup());
     return ok;
 }
@@ -112,7 +121,7 @@ bool bench_heap8_avx2() { return bench_heap<Heap8<MinChildAvx2>>("task6 big heap
 
 bool bench_distances() {
     auto queries = random_queries(graph().nodes(), 32, 12);
-    std::vector<Dist> seq;
+    std::vector<Dist> seq, got;
     auto one_thread = [&] {  // your query, one query after another
         Workspace ws(graph().nodes());
         StdHeap heap;
@@ -123,21 +132,26 @@ bool bench_distances() {
     one_thread();
     if (std::ranges::all_of(seq, [](Dist d) { return d == INF; })) return wrong(task, "your query (task 3) is not written yet");
     if (distances(graph(), queries) != seq) return wrong(task, "the distances are not the same as with your query");
-    auto t = tira::compare(one_thread, [&] { tira::keep(distances(graph(), queries)); }, 5);
+    auto t = tira::compare_fresh([&](std::uint64_t seed) { queries = random_queries(graph().nodes(), 32, seed); }, one_thread,
+                                 [&] { got = distances(graph(), queries); }, [&] { return got == seq; }, 5, 187);
     return tira::report(task, t, 2.5);
 }
 
 bool bench_workspace() {
     // Short queries: the target is 12 random steps away from the source.
     const Graph& g = graph();
-    std::mt19937_64 rng(13);
     std::vector<Query> queries;
-    for (Query q : random_queries(g.nodes(), 2000, 14)) {
-        Node v = q.source;
-        for (int step = 0; step < 12; ++step)
-            if (g.offset[v + 1] > g.offset[v]) v = g.target[g.offset[v] + rng() % (g.offset[v + 1] - g.offset[v])];
-        queries.push_back({q.source, v});
-    }
+    auto make_queries = [&](std::uint64_t seed) {
+        std::mt19937_64 rng(seed);
+        queries.clear();
+        for (Query q : random_queries(g.nodes(), 2000, seed + 1)) {
+            Node v = q.source;
+            for (int step = 0; step < 12; ++step)
+                if (g.offset[v + 1] > g.offset[v]) v = g.target[g.offset[v] + rng() % (g.offset[v + 1] - g.offset[v])];
+            queries.push_back({q.source, v});
+        }
+    };
+    make_queries(13);
     auto run = [&](auto& ws, std::vector<Dist>& out) {
         StdHeap heap;
         out.clear();
@@ -151,7 +165,7 @@ bool bench_workspace() {
     const std::string_view task = "task8 short queries, workspace";
     if (std::ranges::all_of(a, [](Dist d) { return d == INF; })) return wrong(task, "your query (task 3) is not written yet");
     if (a != b) return wrong(task, "the distances are not the same as with a cleared workspace");
-    auto t = tira::compare([&] { run(ref, a); }, [&] { run(mine, b); });
+    auto t = tira::compare_fresh(make_queries, [&] { run(ref, a); }, [&] { run(mine, b); }, [&] { return a == b; }, 9, 188);
     return tira::report(task, t, 3.0);
 }
 

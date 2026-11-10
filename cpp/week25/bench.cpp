@@ -74,6 +74,18 @@ auto all_queries(F search, bool small = false) {
     };
 }
 
+// Measures a goal: `base_search` against `your_search`, with 2^19 new random
+// queries in each round (of the big or the small array). The check compares
+// all answers.
+template <class B, class Y>
+tira::Timing compare_queries(B base_search, Y your_search, bool small, std::uint64_t salt) {
+    std::vector<Key> q, want(queries().size()), got(queries().size());
+    return tira::compare_fresh(
+        [&](std::uint64_t seed) { q = random_queries(small ? small_sorted() : sorted(), queries().size(), seed); },
+        [&] { for (std::size_t i = 0; i < q.size(); ++i) want[i] = base_search(q[i]); },
+        [&] { for (std::size_t i = 0; i < q.size(); ++i) got[i] = your_search(q[i]); }, [&] { return got == want; }, 5, salt);
+}
+
 const auto std_search = [](Key x) { return baseline::lower_bound(sorted(), x); };
 
 bool bench_eytzinger() {
@@ -82,7 +94,7 @@ bool bench_eytzinger() {
     const auto std_small = [](Key x) { return baseline::lower_bound(small_sorted(), x); };
     for (std::size_t i = 0; i < 2000; ++i)
         if (mine(small_queries()[i]) != std_small(small_queries()[i])) return wrong(task, "a result is not the lower bound");
-    auto t = tira::compare(all_queries(std_small, true), all_queries(mine, true), 5);
+    auto t = compare_queries(std_small, mine, true, 252);
     const bool ok = tira::report(task, t, 2);
     auto b = tira::compare(all_queries(std_small, true),
                            all_queries([](Key x) { return baseline::branchless_lower_bound(small_sorted(), x); }, true), 5);
@@ -94,7 +106,7 @@ bool bench_avx2() {
     const std::string_view task = "task4 static B+ tree, AVX2";
     const auto mine = [](Key x) { return static_btree_search(tree(), x); };
     if (!correct(mine)) return wrong(task, "a result is not the lower bound");
-    auto t = tira::compare(all_queries(std_search), all_queries(mine), 5);
+    auto t = compare_queries(std_search, mine, false, 254);
     return tira::report(task, t, 4);
 }
 
@@ -106,7 +118,7 @@ bool bench_avx512() {
     }
     const auto mine = [](Key x) { return static_btree_search_avx512(tree(), x); };
     if (!correct(mine)) return wrong(task, "a result is not the lower bound");
-    auto t = tira::compare(all_queries(std_search), all_queries(mine), 5);
+    auto t = compare_queries(std_search, mine, false, 255);
     const bool ok = tira::report(task, t, 4);
     auto v = tira::compare(all_queries([](Key x) { return static_btree_search(tree(), x); }), all_queries(mine), 5);
     std::println("      compared with your AVX2 search: {:.2f}x (no goal)", v.speedup());
@@ -118,7 +130,7 @@ bool bench_prefetch() {
     const auto mine = [](Key x) { return eytzinger_search_prefetch(layout(), x); };
     if (!correct(mine)) return wrong(task, "a result is not the lower bound");
     // Against your search of task 2: the same search without prefetching.
-    auto t = tira::compare(all_queries([](Key x) { return eytzinger_search(layout(), x); }), all_queries(mine), 5);
+    auto t = compare_queries([](Key x) { return eytzinger_search(layout(), x); }, mine, false, 256);
     return tira::report(task, t, 1.8);
 }
 
@@ -128,12 +140,13 @@ bool bench_batch() {
     search_batch(tree(), queries(), got);
     for (std::size_t i = 0; i < got.size(); i += 97)
         if (got[i] != baseline::lower_bound(sorted(), queries()[i])) return wrong(task, "a result is not the lower bound");
-    auto t = tira::compare(
+    std::vector<Key> q, want(got.size());
+    auto t = tira::compare_fresh(
+        [&](std::uint64_t seed) { q = random_queries(sorted(), queries().size(), seed); },
         [&] {  // your search of task 4, one query after another on one thread
-            for (std::size_t i = 0; i < queries().size(); ++i) got[i] = static_btree_search(tree(), queries()[i]);
-            tira::keep(got[0]);
+            for (std::size_t i = 0; i < q.size(); ++i) want[i] = static_btree_search(tree(), q[i]);
         },
-        [&] { search_batch(tree(), queries(), got), tira::keep(got[0]); }, 7);
+        [&] { search_batch(tree(), q, got); }, [&] { return got == want; }, 7, 257);
     return tira::report(task, t, 2.8);
 }
 
@@ -144,19 +157,25 @@ bool bench_build() {
         build_static_btree_parallel(p, sorted());
         if (!(p.keys == tree().keys)) return wrong(task, "the tree is not the tree of your task 3");
     }
-    // Every run builds a new tree in new memory, so the first touch is included.
-    auto t = tira::compare(
-        [] {
-            StaticBTree s = static_btree_shape(N);
-            build_static_btree(s, sorted());
-            tira::keep(s.keys[0]);
+    // Each round has new keys, and each run builds a new tree in new memory.
+    // Thus the measurement includes the first touch. The step that makes the
+    // keys has no time measurement.
+    std::vector<Key> keys;
+    StaticBTree want, got;
+    auto t = tira::compare_fresh(
+        [&](std::uint64_t seed) {
+            want = {}, got = {};  // Release the memory before the next round.
+            keys = sorted_keys(N, seed);
         },
-        [] {
-            StaticBTree s = static_btree_shape(N);
-            build_static_btree_parallel(s, sorted());
-            tira::keep(s.keys[0]);
+        [&] {
+            want = static_btree_shape(N);
+            build_static_btree(want, keys);
         },
-        5);
+        [&] {
+            got = static_btree_shape(N);
+            build_static_btree_parallel(got, keys);
+        },
+        [&] { return got.keys == want.keys; }, 5, 258);
     return tira::report(task, t, 2);
 }
 

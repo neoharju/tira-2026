@@ -88,16 +88,27 @@ bool bench3() {
 bool bench4() {
     const std::string_view task = "task4 CRC-32C of 4 KB blocks";
     std::mt19937_64 rng(316);
-    const std::string data = random_value(rng, 1 << 20, 1 << 20);  // 1 MB: in the L2 cache
+    std::string data = random_value(rng, (1 << 20) + 16, (1 << 20) + 16);  // 1 MB: it fits in the L2 cache.
     for (std::size_t n : {0, 1, 7, 8, 9, 100, 4096})
         if (crc32c(std::string_view(data).substr(3, n)) != baseline::crc32c(std::string_view(data).substr(3, n))) return wrong(task, "a checksum is wrong");
-    auto run = [&](auto crc, int rounds) {
-        std::uint32_t x = 0;
-        for (int r = 0; r < rounds; ++r)
-            for (std::size_t at = 0; at + 4096 <= data.size(); at += 4096) x ^= crc(std::string_view(data).substr(at, 4096), 0);
+    // 16 passes over the 256 blocks. Each pass starts one byte later, thus the
+    // benchmark does not calculate a checksum of a block two times. Each round
+    // has new data.
+    auto run = [&](auto crc, int passes) {
+        std::uint64_t x = 0;
+        for (int r = 0; r < passes; ++r)
+            for (std::size_t at = static_cast<std::size_t>(r); at + 4096 <= data.size(); at += 4096)
+                x = x * 31 + crc(std::string_view(data).substr(at, 4096), 0);  // The value depends on each checksum.
         return x;
     };
-    const auto t = tira::compare([&] { tira::keep(run(baseline::crc32c, 16)); }, [&] { tira::keep(run([](std::string_view d, std::uint32_t c) { return crc32c(d, c); }, 16)); }, 5);
+    std::uint64_t want = 0, got = 0;
+    const auto t = tira::compare_fresh(
+        [&](std::uint64_t seed) {
+            std::mt19937_64 g(seed);
+            data = random_value(g, (1 << 20) + 16, (1 << 20) + 16);
+        },
+        [&] { want = run(baseline::crc32c, 16); }, [&] { got = run([](std::string_view d, std::uint32_t c) { return crc32c(d, c); }, 16); },
+        [&] { return got == want; }, 5, 314);
     const bool ok = tira::report(task, t, 10.0);
     std::println("      that is {:.1f} GB/s (the baseline {:.2f} GB/s)", 16 * 1.048576e-3 / t.yours, 16 * 1.048576e-3 / t.baseline);
     return ok;
@@ -141,6 +152,25 @@ bool bench5() {
     return true;
 }
 
+// Calculates may_contain from the blocks of f with the rules of bloom.hpp. It
+// does a check of the answers of the measured rounds, without a time
+// measurement.
+bool model_may_contain(const SplitBlockBloom& f, std::uint64_t h) {
+    const BloomBlock& b = f.blocks[((h >> 32) * f.blocks.size()) >> 32];
+    const auto x = static_cast<std::uint32_t>(h);
+    for (int i = 0; i < 8; ++i)
+        if ((b.word[i] >> ((x * bloom_salt[i]) >> 27) & 1) == 0) return false;
+    return true;
+}
+
+// Puts the answers for the probes into one number that depends on each answer.
+template <class F>
+std::uint64_t answers(const std::vector<std::uint64_t>& probes, F may_contain) {
+    std::uint64_t c = 0;
+    for (const auto h : probes) c = c * 3 + may_contain(h);
+    return c;
+}
+
 bool bench6() {
     const std::string_view task = "task6 filter of 64 MB, 1M lookups";
     // 53 million keys, 10 bits per key: a filter of 64 MB, larger than the L2 cache.
@@ -158,18 +188,16 @@ bool bench6() {
     std::size_t positives = 0;
     for (std::size_t i = 0; i < 100'000; ++i) positives += f.may_contain(hash_key(rng()));
     if (positives > 2000) return wrong(task, "too many false positives");
-    const auto t = tira::compare(
-        [&] {
-            std::size_t c = 0;
-            for (const auto h : probes) c += classic.may_contain(h);
-            tira::keep(c);
+    // Each round has new probes. Half of them are inserted keys.
+    std::uint64_t got = 0;
+    const auto t = tira::compare_fresh(
+        [&](std::uint64_t seed) {
+            std::mt19937_64 g(seed);
+            for (auto& h : probes) h = g() % 2 ? in[g() % n] : hash_key(g());
         },
-        [&] {
-            std::size_t c = 0;
-            for (const auto h : probes) c += f.may_contain(h);
-            tira::keep(c);
-        },
-        7);
+        [&] { tira::keep(answers(probes, [&](std::uint64_t h) { return classic.may_contain(h); })); },
+        [&] { got = answers(probes, [&](std::uint64_t h) { return f.may_contain(h); }); },
+        [&] { return got == answers(probes, [&](std::uint64_t h) { return model_may_contain(f, h); }); }, 7, 316);
     return tira::report(task, t, 1.5);
 }
 
@@ -187,18 +215,16 @@ bool bench7() {
             if (a.blocks[i].word[w] != b.blocks[i].word[w]) return wrong(task, "insert_avx2 sets other bits than insert");
     for (std::size_t i = 0; i < 100'000; ++i)
         if (a.may_contain(probes[i]) != a.may_contain_avx2(probes[i])) return wrong(task, "may_contain_avx2 gives another answer than may_contain");
-    const auto t = tira::compare(
-        [&] {
-            std::size_t c = 0;
-            for (const auto h : probes) c += a.may_contain(h);
-            tira::keep(c);
+    // Each round has new probes. Half of them are inserted keys.
+    std::uint64_t want = 0, got = 0;
+    const auto t = tira::compare_fresh(
+        [&](std::uint64_t seed) {
+            std::mt19937_64 g(seed);
+            for (auto& h : probes) h = g() % 2 ? in[g() % n] : hash_key(g());
         },
-        [&] {
-            std::size_t c = 0;
-            for (const auto h : probes) c += a.may_contain_avx2(h);
-            tira::keep(c);
-        },
-        9);
+        [&] { want = answers(probes, [&](std::uint64_t h) { return a.may_contain(h); }); },
+        [&] { got = answers(probes, [&](std::uint64_t h) { return a.may_contain_avx2(h); }); },
+        [&] { return got == want && got == answers(probes, [&](std::uint64_t h) { return model_may_contain(a, h); }); }, 9, 317);
     const bool ok = tira::report(task, t, 1.8);
     const auto u = tira::compare(
         [&] {
@@ -232,7 +258,24 @@ bool bench8() {
         vb.insert(vb.end(), e.begin(), e.end());
     }
     if (va != vb) return wrong(task, "the versions are not those of your compact");
-    const auto t = tira::compare([&] { tira::keep(compact(j).size()); }, [&] { tira::keep(compact_parallel(j).size()); }, 5);
+    // Each round has a new job. The step that makes it has no time
+    // measurement. The check compares the versions of the outputs.
+    auto versions = [](const std::vector<std::string>& tables) {
+        std::vector<Entry> v;
+        for (const auto& x : tables) {
+            const auto e = table_entries(Table::open(std::make_shared<const std::string>(x)));
+            v.insert(v.end(), e.begin(), e.end());
+        }
+        return v;
+    };
+    CompactionJob round;
+    std::vector<std::string> want, got;
+    const auto t = tira::compare_fresh(
+        [&](std::uint64_t seed) {
+            want = {}, got = {};
+            round = big_job(2'000'000, 500'000, seed);
+        },
+        [&] { want = compact(round); }, [&] { got = compact_parallel(round); }, [&] { return versions(got) == versions(want); }, 5, 318);
     return tira::report(task, t, 2.5);
 }
 

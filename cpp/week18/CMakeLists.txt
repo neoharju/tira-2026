@@ -13,5 +13,6 @@ target_link_libraries(w18_bench PRIVATE w18)
 foreach(task RANGE 1 8)
   add_test(NAME w18.task${task} COMMAND w18_test "--test-case=task${task}*")
 endforeach()
+add_test(NAME w18.loader COMMAND w18_test "--test-case=loader*")
 # Without AVX-512 the test of task 5 cannot run; CTest shows it as skipped.
 set_tests_properties(w18.task5 PROPERTIES SKIP_REGULAR_EXPRESSION "SKIPPED: no AVX-512")

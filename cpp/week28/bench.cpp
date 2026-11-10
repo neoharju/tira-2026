@@ -6,6 +6,7 @@
 #include <omp.h>
 
 #include <algorithm>
+#include <memory>
 #include <random>
 #include <unordered_map>
 
@@ -64,8 +65,7 @@ const Cycle& cycle() {
 }
 
 template <class Map>
-std::uint64_t build_and_chase() {
-    const Cycle& c = cycle();
+std::uint64_t build_and_chase(const Cycle& c = cycle()) {
     std::uint32_t at = 0;
     if constexpr (requires(Map m) { m.find(Key{})->second; }) {  // std::unordered_map
         Map m;
@@ -91,7 +91,11 @@ std::uint64_t build_and_chase() {
 template <class Map>
 bool bench_build(std::string_view task, double goal) {
     if (build_and_chase<Map>() != build_and_chase<std::unordered_map<Key, Value>>()) return wrong(task, "a lookup did not find its key or its value");
-    auto t = tira::compare([] { tira::keep(build_and_chase<std::unordered_map<Key, Value>>()); }, [] { tira::keep(build_and_chase<Map>()); }, 3);
+    Cycle c;  // Each round has a new cycle of new keys.
+    std::uint64_t want = 0, got = 0;
+    auto t = tira::compare_fresh([&](std::uint64_t seed) { c = make_cycle(1'000'000, seed); },
+                                 [&] { want = build_and_chase<std::unordered_map<Key, Value>>(c); },
+                                 [&] { got = build_and_chase<Map>(c); }, [&] { return got == want; }, 3, 281);
     if (goal == 0) {
         std::println("{:<32} std {:8.2f} ms  yours {:8.2f} ms  {:.2f}x (no goal: the tests are the goal)", task, t.baseline * 1e3, t.yours * 1e3, t.speedup());
         return true;
@@ -109,7 +113,7 @@ Map filled_ours(const std::vector<Key>& keys) {
 // Erase and insert in turns, with a size of 500,000 keys, and lookups.
 template <class Map>
 bool bench_churn(std::string_view task, double goal) {
-    const auto keys = random_keys(2'500'000, 31);
+    auto keys = random_keys(2'500'000, 31);
     auto run = [&](auto& m, auto&& insert, auto&& erase, auto&& find) {
         std::size_t s = 0;
         for (std::size_t i = 0; i < 500'000; ++i) insert(m, keys[i]);
@@ -129,7 +133,9 @@ bool bench_churn(std::string_view task, double goal) {
         return run(m, [](auto& x, Key k) { x.insert(k, k); }, [](auto& x, Key k) { return std::size_t{x.erase(k)}; }, [](auto& x, Key k) { return std::size_t{x.find(k).has_value()}; });
     };
     if (std_run() != my_run()) return wrong(task, "erase or find gave other results than std::unordered_map");
-    auto t = tira::compare([&] { tira::keep(std_run()); }, [&] { tira::keep(my_run()); }, 3);
+    std::size_t want = 0, got = 0;  // Each round has new keys.
+    auto t = tira::compare_fresh([&](std::uint64_t seed) { keys = random_keys(2'500'000, seed); }, [&] { want = std_run(); },
+                                 [&] { got = my_run(); }, [&] { return got == want; }, 3, 282);
     if (goal == 0) {
         std::println("{:<32} std {:8.2f} ms  yours {:8.2f} ms  {:.2f}x (no goal: the tests are the goal)", task, t.baseline * 1e3, t.yours * 1e3, t.speedup());
         return true;
@@ -158,10 +164,17 @@ bool bench4() {
     auto lookup = [&](const auto& m) {
         Value s = 0;
         for (Key k : queries)
-            if (const auto v = m.find(k)) s += *v;
-        tira::keep(s);
+            if (const auto v = m.find(k)) s = s * 31 + *v;
+        return s;
     };
-    auto t = tira::compare([&] { lookup(scalar); }, [&] { lookup(sse); }, 7);
+    // Each round has new queries. Half of them are keys of the table.
+    Value want = 0, got = 0;
+    auto t = tira::compare_fresh(
+        [&](std::uint64_t seed) {
+            std::mt19937_64 rng(seed);
+            for (std::size_t i = 0; i < queries.size(); ++i) queries[i] = i % 2 == 0 ? keys[rng() % keys.size()] : rng();
+        },
+        [&] { want = lookup(scalar); }, [&] { got = lookup(sse); }, [&] { return got == want; }, 7, 284);
     const bool ok = tira::report(task, t, 1.5);
     auto s = tira::compare([] { tira::keep(build_and_chase<std::unordered_map<Key, Value>>()); }, [] { tira::keep(build_and_chase<SwissMap<SseGroup>>()); }, 3);
     std::println("      your Swiss table with SSE2 against std::unordered_map, build and find: {:.2f}x (no goal)", s.speedup());
@@ -176,27 +189,28 @@ bool bench5() {
     std::mt19937_64 rng(36);
     for (std::size_t i = 0; i < queries.size(); i += 2) queries[i] = keys[rng() % keys.size()];
     const auto m = filled_ours<SwissMap<SseGroup>>(keys);
-    std::vector<std::optional<Value>> out(queries.size());
+    std::vector<std::optional<Value>> out(queries.size()), want(queries.size());
     m.find_batch(queries, out);
     for (std::size_t i = 0; i < queries.size(); i += 101)
         if (out[i] != m.find(queries[i])) return wrong(task, "a result of find_batch is not the result of find");
-    auto t = tira::compare(
-        [&] {
-            for (std::size_t i = 0; i < queries.size(); ++i) out[i] = m.find(queries[i]);
-            tira::keep(out[0]);
+    // Each round has new queries. Half of them are keys of the table.
+    auto t = tira::compare_fresh(
+        [&](std::uint64_t seed) {
+            std::mt19937_64 g(seed);
+            for (std::size_t i = 0; i < queries.size(); ++i) queries[i] = i % 2 == 0 ? keys[g() % keys.size()] : g();
         },
         [&] {
-            m.find_batch(queries, out);
-            tira::keep(out[0]);
+            for (std::size_t i = 0; i < queries.size(); ++i) want[i] = m.find(queries[i]);
         },
-        5);
+        [&] { m.find_batch(queries, out); }, [&] { return out == want; }, 5, 285);
     return tira::report(task, t, 1.3);
 }
 
-// Follows a cycle of `steps` dependent lookups through a map built from c.
+// Follows a cycle of `steps` dependent lookups through a map that has the
+// keys of c. It starts from the key at index `start`.
 template <class Map>
-std::uint64_t chase(const Map& m, const Cycle& c, std::size_t steps) {
-    std::uint32_t at = 0;
+std::uint64_t chase(const Map& m, const Cycle& c, std::size_t steps, std::uint32_t start = 0) {
+    std::uint32_t at = start;
     for (std::size_t step = 0; step < steps; ++step) {
         if constexpr (requires { m.find(Key{})->second; }) {  // std::unordered_map
             const auto it = m.find(c.keys[at]);
@@ -222,7 +236,12 @@ bool bench6() {
     std::unordered_map<Key, Value> std_map;
     for (std::size_t i = 0; i < c.keys.size(); ++i) std_map.insert({c.keys[i], c.next[i]});
     if (chase(cuckoo, c, steps) != chase(std_map, c, steps)) return wrong(task, "a lookup did not find its key or its value");
-    auto t = tira::compare([&] { tira::keep(chase(std_map, c, steps)); }, [&] { tira::keep(chase(cuckoo, c, steps)); }, 5);
+    // Each round has a new random start on the cycle.
+    std::uint32_t start = 0;
+    std::uint64_t want = 0, got = 0;
+    auto t = tira::compare_fresh([&](std::uint64_t seed) { start = static_cast<std::uint32_t>(seed % c.keys.size()); },
+                                 [&] { want = chase(std_map, c, steps, start); }, [&] { got = chase(cuckoo, c, steps, start); },
+                                 [&] { return got == want; }, 5, 286);
     const bool ok = tira::report(task, t, 1.7);
     std::println("      {} keys in {} buckets of 4 slots: {:.1f} % full", cuckoo.size(), cuckoo.bucket_count(),
                  100.0 * static_cast<double>(cuckoo.size()) / static_cast<double>(cuckoo.capacity()));
@@ -240,7 +259,7 @@ bool bench6() {
 bool bench7() {
     const std::string_view task = "task7 sharded map, 4 threads";
     if (!swiss_works(task)) return false;
-    const auto keys = random_keys(1'000'000, 37);
+    auto keys = random_keys(1'000'000, 37);
     {
         ShardedMap m(64, 1);
         if (m.shards.size() != 64) return wrong(task, "the map does not have 64 shards");
@@ -268,16 +287,28 @@ bool bench7() {
         for (std::size_t i = 0; i < keys.size(); i += 7) right = right && (!m.find(keys[i]) || *m.find(keys[i]) == keys[i]);
         if (!right) return wrong(task, "a value is wrong");
     }
-    auto t = tira::compare(
+    // Each round has new keys. After the round, each key of the round in the
+    // map must have its own value. This check has no time measurement.
+    std::unique_ptr<ShardedMap> mine;
+    auto t = tira::compare_fresh(
+        [&](std::uint64_t seed) {
+            mine.reset();
+            keys = random_keys(1'000'000, seed);
+        },
         [&] {
             baseline::LockedMap m(1);
             tira::keep(work(m));
         },
         [&] {
-            ShardedMap m(64, 1);
-            tira::keep(work(m));
+            mine = std::make_unique<ShardedMap>(64, 1);
+            tira::keep(work(*mine));
         },
-        5);
+        [&] {
+            bool right = true;
+            for (std::size_t i = 0; i < keys.size(); i += 7) right = right && (!mine->find(keys[i]) || *mine->find(keys[i]) == keys[i]);
+            return right;
+        },
+        5, 287);
     return tira::report(task, t, 3);
 }
 

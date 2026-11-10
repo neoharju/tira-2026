@@ -94,11 +94,16 @@ Vectors read_fvecs(const std::string& path, std::size_t max_count) {
     Vectors x;
     std::vector<float> row;
     while (x.n < max_count && in.read(reinterpret_cast<char*>(&d), sizeof d)) {
-        if (d <= 0 || (x.dim != 0 && static_cast<std::size_t>(d) != x.dim)) throw std::runtime_error("bad dimension in " + path);
+        // The file is input. The dimension must be at most 65,536, thus a bad
+        // value cannot cause an allocation of gigabytes. It must be the same in
+        // each vector.
+        if (d <= 0 || d > 65536 || (x.dim != 0 && static_cast<std::size_t>(d) != x.dim)) throw std::runtime_error("bad dimension in " + path);
         x.dim = static_cast<std::size_t>(d);
         row.resize(x.dim);
         if (!in.read(reinterpret_cast<char*>(row.data()), static_cast<std::streamsize>(x.dim * sizeof(float))))
             throw std::runtime_error("truncated file " + path);
+        for (float v : row)  // NaN or infinity makes the distances wrong (and a cast to a byte undefined).
+            if (!std::isfinite(v)) throw std::runtime_error("a value that is not finite in " + path);
         for (float v : row) x.values.push_back(static_cast<std::uint8_t>(std::clamp(std::round(v), 0.0f, 255.0f)));
         ++x.n;
     }

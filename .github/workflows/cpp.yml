@@ -1,0 +1,122 @@
+# Builds the C++ template of Parts III-V (cpp/) for each push and pull request
+# that changes it: GCC 16 (the course compiler) with warnings as errors in the
+# release and debug presets, Clang with ThreadSanitizer, and the grader in its
+# sandbox. The task code is the starting code. Thus most task tests fail by
+# design, and the jobs run only the tests that the starting code must pass.
+name: C++
+
+on:
+  push:
+    branches: [main]
+    paths: ["cpp/**", ".github/workflows/cpp.yml"]
+  pull_request:
+    paths: ["cpp/**", ".github/workflows/cpp.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cpp-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GCC16: ${{ github.workspace }}/../gcc16
+
+jobs:
+  gcc:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: cpp
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Cache GCC 16
+        id: cache-gcc
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.GCC16 }}
+          key: gcc-16.2-${{ runner.os }}-v1
+
+      - name: Install GCC 16 (conda-forge, as in cpp/README.md)
+        if: steps.cache-gcc.outputs.cache-hit != 'true'
+        run: |
+          curl -Ls https://conda.anaconda.org/conda-forge/linux-64/micromamba-2.10.0-0.tar.bz2 | tar -xj bin/micromamba
+          ./bin/micromamba create -y -p "$GCC16" -c conda-forge gxx=16.2 gcc=16.2 libsanitizer=16.2
+          rm -rf bin
+
+      - name: Release build (warnings are errors)
+        run: |
+          cmake --preset release -DCMAKE_CXX_COMPILER="$GCC16/bin/g++" -DTIRA_WERROR=ON
+          cmake --build --preset release -j "$(nproc)"
+
+      - name: Release tests that the starting code must pass
+        run: ctest --preset release -R "^w17\.|loader" --timeout 600
+
+      - name: The benchmark harness, with new inputs in each round
+        run: TIRA_SEED=random ./build/release/week17/w17_bench | tee bench.txt || true; grep -q "task8 prefix_sum" bench.txt
+
+      - name: Debug build (AddressSanitizer + UndefinedBehaviorSanitizer)
+        run: |
+          cmake --preset debug -DCMAKE_CXX_COMPILER="$GCC16/bin/g++" -DTIRA_WERROR=ON
+          cmake --build --preset debug -j "$(nproc)"
+
+      - name: Debug tests that the starting code must pass
+        run: ctest --preset debug -R "^w17\.task[2-8]$|loader" --timeout 600
+
+  tsan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: cpp
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Clang, LLVM's OpenMP and the sanitizer runtimes
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang libomp-dev libclang-rt-18-dev g++-14
+
+      - name: ThreadSanitizer build (warnings are errors)
+        run: |
+          cmake --preset tsan -DTIRA_WERROR=ON
+          cmake --build --preset tsan -j "$(nproc)"
+
+      - name: ThreadSanitizer tests that the starting code must pass
+        run: ctest --preset tsan -R "^w17\." --timeout 900
+
+  grader:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    needs: gcc
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Restore GCC 16
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.GCC16 }}
+          key: gcc-16.2-${{ runner.os }}-v1
+          fail-on-cache-miss: true
+
+      - name: Clang, bubblewrap, and user namespaces for the sandbox
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang libomp-dev libclang-rt-18-dev g++-14 bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: Grade the starting code of week 17
+        run: |
+          mkdir -p submission && cp cpp/week17/task*.cpp submission/
+          TIRA_GCC="$GCC16/bin/g++" cpp/grader/grade.sh --week 17 --submission submission --out results --runs 1 --timeout 900 --cpus 0-1 --threads 2
+          grep -q "^task8 " results/summary.txt
+          grep -q "^task3 *pass *pass" results/summary.txt

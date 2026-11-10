@@ -42,22 +42,27 @@ struct RankQueries {
     std::vector<Query> queries;
     std::vector<Dist> want;  // the right distances
 };
+RankQueries make_rank_queries(std::uint64_t seed) {
+    const Graph& g = road().graph;
+    const std::size_t rank = std::min<std::size_t>(std::size_t{1} << 15, g.nodes() - 1);
+    const std::vector<Query> random = random_queries(g.nodes(), 60, seed);
+    RankQueries out;
+    out.queries.resize(random.size());
+    out.want.resize(random.size());
+#pragma omp parallel for schedule(dynamic, 1)
+    for (std::size_t i = 0; i < random.size(); ++i) {
+        std::vector<Dist> d = baseline::distances_from(g, random[i].source);
+        std::vector<Node> order(g.nodes());
+        std::iota(order.begin(), order.end(), Node{0});
+        std::nth_element(order.begin(), order.begin() + static_cast<std::ptrdiff_t>(rank), order.end(),
+                         [&](Node a, Node b) { return std::pair(d[a], a) < std::pair(d[b], b); });
+        out.queries[i] = {random[i].source, order[rank]};
+        out.want[i] = d[order[rank]];
+    }
+    return out;
+}
 const RankQueries& rank_queries() {
-    static const auto q = [] {
-        const Graph& g = road().graph;
-        const std::size_t rank = std::min<std::size_t>(std::size_t{1} << 15, g.nodes() - 1);
-        RankQueries out;
-        for (Query x : random_queries(g.nodes(), 60, 23)) {
-            std::vector<Dist> d = baseline::distances_from(g, x.source);
-            std::vector<Node> order(g.nodes());
-            std::iota(order.begin(), order.end(), Node{0});
-            std::nth_element(order.begin(), order.begin() + static_cast<std::ptrdiff_t>(rank), order.end(),
-                             [&](Node a, Node b) { return std::pair(d[a], a) < std::pair(d[b], b); });
-            out.queries.push_back({x.source, order[rank]});
-            out.want.push_back(d[order[rank]]);
-        }
-        return out;
-    }();
+    static const auto q = make_rank_queries(23);
     return q;
 }
 
@@ -84,9 +89,23 @@ bool check_dijkstra(std::string_view task) {
                  [](Node s, Node t) { return dijkstra(road().graph, s, t).distance; });
 }
 
-// Your astar with h = 0, for the queries.
-void run_dijkstra() {
-    for (auto [s, t] : queries()) tira::keep(dijkstra(road().graph, s, t));
+// Measures your astar with h = 0 (the baseline) against `search`, with new
+// random queries in each round. The two must give the same distances.
+template <class Search>
+tira::Timing compare_with_dijkstra(Search search, std::uint64_t salt) {
+    std::vector<Query> q;
+    std::vector<Dist> want, got;
+    return tira::compare_fresh(
+        [&](std::uint64_t seed) { q = random_queries(road().graph.nodes(), 60, seed); },
+        [&] {
+            want.clear();
+            for (auto [s, t] : q) want.push_back(dijkstra(road().graph, s, t).distance);
+        },
+        [&] {
+            got.clear();
+            for (auto [s, t] : q) got.push_back(search(s, t));
+        },
+        [&] { return got == want; }, 5, salt);
 }
 
 bool bench_geo() {
@@ -97,9 +116,8 @@ bool bench_geo() {
             return astar(m.graph, s, t, GeoPotential{m.points, scale, m.points[t]}).distance;
         }))
         return false;
-    auto t = tira::compare(run_dijkstra, [&] {
-        for (auto [s, d] : queries()) tira::keep(astar(m.graph, s, d, GeoPotential{m.points, scale, m.points[d]}));
-    }, 5);
+    auto t = compare_with_dijkstra(
+        [&](Node s, Node d) { return astar(m.graph, s, d, GeoPotential{m.points, scale, m.points[d]}).distance; }, 192);
     return tira::report(task, t, 1.3);
 }
 
@@ -110,9 +128,8 @@ bool bench_alt() {
     if (!check_dijkstra(task) || !check(task, "astar with AltPotential", queries(), query_distances(),
                                         [&](Node s, Node t) { return astar(m.graph, s, t, AltPotential{rows, rows[t]}).distance; }))
         return false;
-    auto t = tira::compare(run_dijkstra, [&] {
-        for (auto [s, d] : queries()) tira::keep(astar(m.graph, s, d, AltPotential{rows, rows[d]}));
-    }, 5);
+    auto t = compare_with_dijkstra([&](Node s, Node d) { return astar(m.graph, s, d, AltPotential{rows, rows[d]}).distance; },
+                                   194);
     return tira::report(task, t, 5.0);
 }
 
@@ -123,20 +140,38 @@ bool bench_bidirectional() {
     if (!check(task, "your astar with h = 0", r.queries, r.want, [&](Node s, Node t) { return dijkstra(m.graph, s, t).distance; }) ||
         !check(task, "bidirectional", r.queries, r.want, [&](Node s, Node t) { return bidirectional(m.graph, m.reverse, s, t); }))
         return false;
-    auto t = tira::compare([&] { for (auto [s, d] : r.queries) tira::keep(dijkstra(m.graph, s, d)); },
-                           [&] { for (auto [s, d] : r.queries) tira::keep(bidirectional(m.graph, m.reverse, s, d)); }, 7);
+    // Each round has new medium-range queries. To make a query takes about one
+    // Dijkstra search. This step has no time measurement.
+    RankQueries round;
+    std::vector<Dist> base, got;
+    auto t = tira::compare_fresh(
+        [&](std::uint64_t seed) { round = make_rank_queries(seed); },
+        [&] {
+            base.clear();
+            for (auto [s, d] : round.queries) base.push_back(dijkstra(m.graph, s, d).distance);
+        },
+        [&] {
+            got.clear();
+            for (auto [s, d] : round.queries) got.push_back(bidirectional(m.graph, m.reverse, s, d));
+        },
+        [&] { return got == round.want && base == round.want; }, 7, 195);
     return tira::report(task, t, 1.25);
 }
 
 bool bench_bound16() {
     // 4096 random rows (256 KB, they fit in the L2 cache) and random nodes.
-    std::mt19937_64 rng(22);
     std::vector<LandmarkRow16> rows(4096);
-    for (auto& r : rows)
-        for (int i = 0; i < 16; ++i) r.from[i] = static_cast<std::int32_t>(rng() % 5000000), r.to[i] = static_cast<std::int32_t>(rng() % 5000000);
     std::vector<std::uint32_t> nodes(1 << 20);
-    for (auto& v : nodes) v = static_cast<std::uint32_t>(rng() % rows.size());
-    const LandmarkRow16 target = rows[17];
+    LandmarkRow16 target{};
+    auto make = [&](std::uint64_t seed) {
+        std::mt19937_64 rng(seed);
+        for (auto& r : rows)
+            for (int i = 0; i < 16; ++i)
+                r.from[i] = static_cast<std::int32_t>(rng() % 5000000), r.to[i] = static_cast<std::int32_t>(rng() % 5000000);
+        for (auto& v : nodes) v = static_cast<std::uint32_t>(rng() % rows.size());
+        target = rows[rng() % rows.size()];
+    };
+    make(22);
     for (std::uint32_t v : nodes) {
         Dist got = alt_bound16(rows[v], target), want = baseline::alt_bound16(rows[v], target);
         if (got != want) {
@@ -144,15 +179,16 @@ bool bench_bound16() {
             return false;
         }
     }
-    auto run = [&](auto bound) {
+    std::uint64_t want = 0, got = 0;
+    auto run = [&](auto bound, std::uint64_t& sum) {
         return [&, bound] {
-            std::uint64_t sum = 0;
-            for (std::uint32_t v : nodes) sum += bound(rows[v], target);
-            tira::keep(sum);
+            sum = 0;
+            for (std::uint32_t v : nodes) sum = sum * 31 + bound(rows[v], target);  // The sum depends on each bound.
         };
     };
-    auto t = tira::compare(run([](const LandmarkRow16& a, const LandmarkRow16& b) { return baseline::alt_bound16(a, b); }),
-                           run([](const LandmarkRow16& a, const LandmarkRow16& b) { return alt_bound16(a, b); }));
+    auto t = tira::compare_fresh(make, run([](const LandmarkRow16& a, const LandmarkRow16& b) { return baseline::alt_bound16(a, b); }, want),
+                                 run([](const LandmarkRow16& a, const LandmarkRow16& b) { return alt_bound16(a, b); }, got),
+                                 [&] { return got == want; }, 9, 197);
     return tira::report("task7 ALT bound, 16 landmarks", t, 2.5);
 }
 
@@ -164,13 +200,20 @@ bool bench_rows() {
         return false;
     }
     int all = omp_get_max_threads();
-    auto t = tira::compare(
+    // Each round has new random landmarks.
+    std::vector<Node> round(landmarks.size());
+    std::vector<LandmarkRow> want, got;
+    auto t = tira::compare_fresh(
+        [&](std::uint64_t seed) {
+            std::mt19937_64 rng(seed);
+            for (Node& v : round) v = static_cast<Node>(rng() % m.graph.nodes());
+        },
         [&] {  // your landmark_rows on one thread
             omp_set_num_threads(1);
-            tira::keep(landmark_rows(m.graph, m.reverse, landmarks));
+            want = landmark_rows(m.graph, m.reverse, round);
             omp_set_num_threads(all);
         },
-        [&] { tira::keep(landmark_rows(m.graph, m.reverse, landmarks)); }, 3);
+        [&] { got = landmark_rows(m.graph, m.reverse, round); }, [&] { return got == want; }, 3, 198);
     return tira::report("task8 landmark rows in parallel", t, 2.5);
 }
 

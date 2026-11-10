@@ -155,32 +155,57 @@ bool bench_blocked() {
             if (s.estimate(key) != std::min(m + 1, 255u)) return wrong(task, "an estimate is not the one of the rules");
         }
     }
-    std::mt19937_64 rng(66);
     std::vector<std::uint64_t> keys(4'000'000);
-    for (auto& k : keys) k = rng() % 50'000'000;
     auto run = [&](auto& sketch) {
-        unsigned s = 0;
+        std::uint64_t s = 0;
         for (std::uint64_t k : keys) {
             sketch.increment(k);
-            s += sketch.estimate(k ^ 1);
+            s = s * 31 + sketch.estimate(k ^ 1);  // The sum depends on each estimate.
         }
-        tira::keep(s);
+        return s;
+    };
+    // The same run on a scalar model of the rules of BlockedSketch, without
+    // aging. It does a check of the answers of each round, without a time
+    // measurement.
+    auto model_run = [&](std::size_t blocks) {
+        std::vector<std::uint8_t> c(64 * blocks, 0);
+        auto counter = [&](std::uint64_t h, unsigned r) -> std::uint8_t& {
+            return c[64 * (h & (blocks - 1)) + 16 * r + ((h >> (32 + 4 * r)) & 15)];
+        };
+        std::uint64_t s = 0;
+        for (std::uint64_t k : keys) {
+            const std::uint64_t h = mix(k);
+            unsigned m = 255;
+            for (unsigned r = 0; r < 4; ++r) m = std::min<unsigned>(m, counter(h, r));
+            for (unsigned r = 0; r < 4; ++r)
+                if (std::uint8_t& x = counter(h, r); x == m && x < 255) ++x;
+            const std::uint64_t e = mix(k ^ 1);
+            unsigned est = 255;
+            for (unsigned r = 0; r < 4; ++r) est = std::min<unsigned>(est, counter(e, r));
+            s = s * 31 + est;
+        }
+        return s;
     };
     // In memory the gain is the layout (one cache miss instead of four); in
     // the L2 cache it is the instructions (no branches in the update).
     bool ok = true;
     for (const auto& size : {std::pair{"task6 blocked sketch, 64 MB", std::size_t{1} << 26}, std::pair{"task6 blocked sketch, 64 KB", std::size_t{1} << 16}}) {
         const std::size_t counters = size.second;  // (Clang's OpenMP cannot capture a structured binding)
-        auto t = tira::compare(
+        std::uint64_t got = 0;
+        auto t = tira::compare_fresh(
+            [&](std::uint64_t seed) {
+                std::mt19937_64 rng(seed);
+                for (auto& k : keys) k = rng() % 50'000'000;
+            },
             [&] {
                 baseline::CountMinSketch s(counters / 4);
-                run(s);
+                tira::keep(run(s));
             },
             [&] {
                 BlockedSketch s(counters / 64, ~std::size_t{0});
-                run(s);
+                got = run(s);
             },
-            5);
+            [&] { return got == model_run(counters / 64); }, 5, 276);
         ok = tira::report(size.first, t, 1.6) && ok;
     }
     return ok;
@@ -219,16 +244,21 @@ bool bench_sharded() {
         if (pool.shards.size() != 64) return wrong(task, "the pool does not have 64 shards");
         if (!run_threads(pool, traces)) return wrong(task, "a fetch returned the wrong page or failed");
     }
-    auto t = tira::compare(
+    // Each round has new traces. Each fetch does a check of the page number in the page.
+    bool base_ok = true, mine_ok = true;
+    auto t = tira::compare_fresh(
+        [&](std::uint64_t seed) {
+            for (unsigned i = 0; i < traces.size(); ++i) traces[i] = page_trace(250'000, pages, 1.0, seed + i);
+        },
         [&] {
             baseline::LockedPool pool(frames, disk);
-            tira::keep(run_threads(pool, traces));
+            base_ok = run_threads(pool, traces);
         },
         [&] {
             ShardedPool pool(frames, 64, disk);
-            tira::keep(run_threads(pool, traces));
+            mine_ok = run_threads(pool, traces);
         },
-        5);
+        [&] { return base_ok && mine_ok; }, 5, 277);
     return tira::report(task, t, 2.5);
 }
 
@@ -258,7 +288,20 @@ bool bench_guards() {
         }
         return s;
     };
-    auto t = tira::compare([&] { tira::keep(work(false, true, 30'000)); }, [&] { tira::keep(work(true, true, 30'000)); }, 5);
+    // Each round puts new bytes in the page. The two types of guards must see them.
+    std::uint64_t with_write = 0, with_read = 0;
+    auto t = tira::compare_fresh(
+        [&](std::uint64_t seed) {
+            WriteGuard w = pool.fetch_write(0);
+            std::mt19937_64 rng(seed);
+            if (w)
+                for (std::size_t j = 0; j < page_size; j += 8) {
+                    const std::uint64_t v = rng();
+                    std::memcpy(w.bytes + j, &v, sizeof v);
+                }
+        },
+        [&] { with_write = work(false, true, 30'000); }, [&] { with_read = work(true, true, 30'000); },
+        [&] { return with_read == with_write && with_read != 0; }, 5, 278);
     const bool ok = tira::report(task, t, 1.8);
     auto s = tira::compare([&] { tira::keep(work(false, false, 30'000)); }, [&] { tira::keep(work(true, false, 30'000)); }, 5);
     std::println("      a short read of 8 bytes: {:.2f}x (no goal: then the mutex of the shard decides)", s.speedup());

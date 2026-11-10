@@ -7,6 +7,7 @@
 #include <omp.h>
 
 #include <algorithm>
+#include <random>
 
 #include "tasks.hpp"
 #include "tira.hpp"
@@ -35,6 +36,38 @@ const Hnsw& index() {
         return h;
     }();
     return i;
+}
+
+// Makes new queries for a round of a goal: random vectors of the data with a
+// small noise. The number of queries is the same as in queries().
+Vectors fresh_queries(std::uint64_t seed) {
+    std::mt19937_64 rng(seed);
+    Vectors q(queries().n, base().dim);
+    for (std::size_t j = 0; j < q.n; ++j) {
+        const std::uint8_t* v = base()[rng() % base().n];
+        for (std::size_t i = 0; i < q.dim; ++i)
+            q.values[j * q.dim + i] = static_cast<std::uint8_t>(std::clamp(static_cast<int>(v[i]) + static_cast<int>(rng() % 17) - 8, 0, 255));
+    }
+    return q;
+}
+
+// Measures `base_search` and `your_search` (each: query -> results) with new
+// queries in each round. Their results must be the same.
+template <class B, class Y>
+tira::Timing compare_searches(B base_search, Y your_search, int rounds, std::uint64_t salt) {
+    Vectors q;
+    Results want, got;
+    return tira::compare_fresh(
+        [&](std::uint64_t seed) { q = fresh_queries(seed); },
+        [&] {
+            want.assign(q.n, {});
+            for (std::size_t j = 0; j < q.n; ++j) want[j] = base_search(q[j]);
+        },
+        [&] {
+            got.assign(q.n, {});
+            for (std::size_t j = 0; j < q.n; ++j) got[j] = your_search(q[j]);
+        },
+        [&] { return got == want; }, rounds, salt);
 }
 
 bool wrong(std::string_view task, std::string_view what) {
@@ -75,8 +108,8 @@ bool bench_search() {
     Workspace work;
     for (std::size_t q = 0; q < queries().n; ++q)
         if (search(h, queries()[q], 10, 64, work) != baseline::search(h, queries()[q], 10, 64)) return wrong(task, "a result is not the baseline's");
-    auto t = tira::compare([&] { for (std::size_t q = 0; q < queries().n; ++q) tira::keep(baseline::search(h, queries()[q], 10, 64)); },
-                           [&] { for (std::size_t q = 0; q < queries().n; ++q) tira::keep(search(h, queries()[q], 10, 64, work)); }, 7);
+    auto t = compare_searches([&](const std::uint8_t* q) { return baseline::search(h, q, 10, 64); },
+                              [&](const std::uint8_t* q) { return search(h, q, 10, 64, work); }, 7, 244);
     return tira::report(task, t, 2);
 }
 
@@ -87,13 +120,15 @@ bool bench_distance() {
     for (std::size_t i = 0; i < data.n; ++i)
         if (l2_squared(data[i], queries()[0], data.dim) != baseline::l2_squared(data[i], queries()[0], data.dim))
             return wrong(task, "a distance is not the baseline's");
-    auto run = [&](auto distance) {
-        std::uint32_t s = 0;
-        for (std::size_t q = 0; q < 16; ++q)
-            for (std::size_t i = 0; i < data.n; ++i) s += distance(data[i], queries()[q], data.dim);
-        tira::keep(s);
+    Vectors q;
+    std::uint32_t want = 0, got = 0;
+    auto run = [&](auto distance, std::uint32_t& s) {
+        s = 0;
+        for (std::size_t j = 0; j < 16; ++j)
+            for (std::size_t i = 0; i < data.n; ++i) s = s * 31 + distance(data[i], q[j], data.dim);  // The sum depends on each distance.
     };
-    auto t = tira::compare([&] { run(baseline::l2_squared); }, [&] { run(l2_squared); }, 15);
+    auto t = tira::compare_fresh([&](std::uint64_t seed) { q = fresh_queries(seed); }, [&] { run(baseline::l2_squared, want); },
+                                 [&] { run(l2_squared, got); }, [&] { return got == want; }, 15, 245);
     return tira::report(task, t, 5);
 }
 
@@ -105,8 +140,8 @@ bool bench_fast() {
     for (std::size_t q = 0; q < queries().n; ++q)
         if (search_fast(h, queries()[q], 10, 64, work) != baseline::search(h, queries()[q], 10, 64)) return wrong(task, "a result is not the baseline's");
     // Against your search of task 4: the same search without prefetching.
-    auto t = tira::compare([&] { for (std::size_t q = 0; q < queries().n; ++q) tira::keep(search(h, queries()[q], 10, 64, work)); },
-                           [&] { for (std::size_t q = 0; q < queries().n; ++q) tira::keep(search_fast(h, queries()[q], 10, 64, work)); }, 9);
+    auto t = compare_searches([&](const std::uint8_t* q) { return search(h, q, 10, 64, work); },
+                              [&](const std::uint8_t* q) { return search_fast(h, q, 10, 64, work); }, 9, 246);
     return tira::report(task, t, 1.15);
 }
 
@@ -118,13 +153,15 @@ bool bench_batch() {
     for (std::size_t q = 0; q < queries().n; ++q)
         if (got[q] != baseline::search(h, queries()[q], 10, 64)) return wrong(task, "a result is not the baseline's");
     Workspace work;
-    auto t = tira::compare(
+    Vectors q;
+    Results want, mine;
+    auto t = tira::compare_fresh(
+        [&](std::uint64_t seed) { q = fresh_queries(seed); },
         [&] {  // your search_fast for one query after another, on one thread
-            Results r(queries().n);
-            for (std::size_t q = 0; q < queries().n; ++q) r[q] = search_fast(h, queries()[q], 10, 64, work);
-            tira::keep(r);
+            want.assign(q.n, {});
+            for (std::size_t j = 0; j < q.n; ++j) want[j] = search_fast(h, q[j], 10, 64, work);
         },
-        [&] { tira::keep(search_batch(h, queries(), 10, 64)); }, 9);
+        [&] { mine = search_batch(h, q, 10, 64); }, [&] { return mine == want; }, 9, 247);
     return tira::report(task, t, 2.5);
 }
 

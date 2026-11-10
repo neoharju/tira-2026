@@ -9,6 +9,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <numeric>
 #include <random>
 #include <string>
@@ -339,4 +341,25 @@ TEST_CASE("task8 knn_batch gives the results of knn") {
         CHECK(knn_batch(data, queries, 0) == Results(queries.n));
     }
     omp_set_num_threads(threads);
+}
+
+// The loader of the .fvecs files (given code). A bad file must give an
+// exception, not a very large allocation or undefined behaviour.
+TEST_CASE("loader: read_fvecs checks its input") {
+    const auto path = (std::filesystem::temp_directory_path() / "w23_loader_test.fvecs").string();
+    auto load = [&](std::int32_t dim, std::vector<float> values) {
+        std::ofstream out(path, std::ios::binary);
+        out.write(reinterpret_cast<const char*>(&dim), sizeof dim);
+        out.write(reinterpret_cast<const char*>(values.data()), static_cast<std::streamsize>(values.size() * sizeof(float)));
+        out.close();
+        return read_fvecs(path, 10);
+    };
+    CHECK(load(2, {1, 2}).n == 1);
+    CHECK_THROWS(load(0, {}));
+    CHECK_THROWS(load(-5, {}));
+    CHECK_THROWS(load(1 << 30, {1}));                   // This allocates 4 GB without the check.
+    CHECK_THROWS(load(2, {1}));                         // The file is too short.
+    CHECK_THROWS(load(2, {1, std::nanf("")}));          // The value is not finite.
+    CHECK_THROWS(load(2, {1, INFINITY}));
+    std::filesystem::remove(path);
 }

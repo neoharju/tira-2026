@@ -11,6 +11,10 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3 -g -DNDEBUG")  # -g lets perf and gdb show sour
 # All code may use AVX2, FMA and BMI2 (x86-64-v3, Intel Haswell and AMD Zen
 # or newer). Functions that use AVX-512 say so with [[gnu::target("avx512f")]].
 add_compile_options(-march=x86-64-v3 -Wall -Wextra -Wpedantic -Wshadow)
+option(TIRA_WERROR "Make warnings into errors (the CI uses this)" OFF)
+if(TIRA_WERROR)
+  add_compile_options(-Werror)
+endif()
 
 set(TIRA_SANITIZE "" CACHE STRING "Sanitizers to build with, for example address;undefined or thread")
 option(TIRA_FUZZ "Build the libFuzzer targets (with Clang; the fuzz preset)" OFF)
